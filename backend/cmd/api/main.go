@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Divyansh670/opsmind-ai/backend/internal/agents"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/config"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/db"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
@@ -52,15 +53,10 @@ func main() {
 	webhookHandler := webhook.NewHandler(cfg.GitHubWebhookSecret, jobQueue)
 
 	// Simple job consumer (placeholder until agents are built)
-	go func() {
-		for payload := range jobQueue {
-			log.Printf("INFO: processing PR #%d from %s",
-				payload.Number,
-				payload.Repository.FullName,
-			)
-		}
-	}()
-
+	// Start worker pool
+	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue)
+	pool.Start()
+	defer pool.Stop()
 	// Set up HTTP router
 	mux := http.NewServeMux()
 
