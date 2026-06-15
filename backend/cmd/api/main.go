@@ -13,6 +13,8 @@ import (
 
 	"github.com/Divyansh670/opsmind-ai/backend/internal/config"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/db"
+	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
+	"github.com/Divyansh670/opsmind-ai/backend/internal/webhook"
 	"github.com/joho/godotenv"
 )
 
@@ -35,6 +37,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize database
 	dbConfig := db.DefaultConfig(cfg.DSN())
 	database, err := db.New(dbConfig)
 	if err != nil {
@@ -42,8 +45,26 @@ func main() {
 	}
 	defer database.Close()
 
+	// Create job queue (buffer of 100 jobs)
+	jobQueue := make(chan models.WebhookPayload, 100)
+
+	// Initialize webhook handler
+	webhookHandler := webhook.NewHandler(cfg.GitHubWebhookSecret, jobQueue)
+
+	// Simple job consumer (placeholder until agents are built)
+	go func() {
+		for payload := range jobQueue {
+			log.Printf("INFO: processing PR #%d from %s",
+				payload.Number,
+				payload.Repository.FullName,
+			)
+		}
+	}()
+
+	// Set up HTTP router
 	mux := http.NewServeMux()
 
+	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		dbErr := database.HealthCheck(ctx)
@@ -66,6 +87,10 @@ func main() {
 		})
 	})
 
+	// GitHub webhook endpoint
+	mux.HandleFunc("/webhook/github", webhookHandler.HandleWebhook)
+
+	// Build server
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
 		Handler:      mux,
@@ -74,6 +99,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Start server
 	go func() {
 		fmt.Printf("OpsMind backend starting on :%s\n", cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -81,6 +107,7 @@ func main() {
 		}
 	}()
 
+	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
