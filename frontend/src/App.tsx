@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import MetricsGrid from './components/MetricsGrid';
 import PullRequestTable from './components/PullRequestTable';
+import FindingDetails from './components/FindingDetails';
 import { apiClient } from './api/client';
 import type { DashboardMetrics, PullRequest } from './types/api';
 
@@ -46,11 +47,7 @@ function App() {
         onSelectPR={setSelectedPR}
       />
 
-      {selectedPR && (
-        <div style={{ color: '#9ca3af', fontSize: 13 }}>
-          Selected PR #{selectedPR.pr_number} — findings panel coming in the next step
-        </div>
-      )}
+     <FindingDetails selectedPR={selectedPR} />
     </Layout>
   );
 }
