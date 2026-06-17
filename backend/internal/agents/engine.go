@@ -8,11 +8,6 @@ import (
 	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
 )
 
-// Job represents a single PR analysis task
-type Job struct {
-	Payload models.WebhookPayload
-}
-
 // WorkerPool manages concurrent agent execution
 type WorkerPool struct {
 	jobChannel chan models.WebhookPayload
@@ -20,16 +15,19 @@ type WorkerPool struct {
 	wg         sync.WaitGroup
 	ctx        context.Context
 	cancel     context.CancelFunc
+
+	securityAgent *SecuritySentinelAgent
 }
 
 // NewWorkerPool creates a new worker pool
-func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload) *WorkerPool {
+func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqClient *GroqClient) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
-		jobChannel: jobChannel,
-		maxWorkers: maxWorkers,
-		ctx:        ctx,
-		cancel:     cancel,
+		jobChannel:    jobChannel,
+		maxWorkers:    maxWorkers,
+		ctx:           ctx,
+		cancel:        cancel,
+		securityAgent: NewSecuritySentinelAgent(groqClient),
 	}
 }
 
@@ -72,7 +70,7 @@ func (wp *WorkerPool) worker(id int) {
 	}
 }
 
-// processJob runs all 3 agents concurrently for a single PR
+// processJob runs the security agent (and placeholders for the other 2) for a single PR
 func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 	log.Printf("INFO: worker %d processing PR #%d from %s",
 		workerID,
@@ -80,94 +78,24 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 		payload.Repository.FullName,
 	)
 
-	// Run all 3 agents concurrently using a WaitGroup
-	var agentWg sync.WaitGroup
-	results := make(chan AgentResult, 3)
+	// NOTE: real diff fetching from GitHub comes in a later step.
+	// For now we use the PR body as a placeholder diff source for testing.
+	diff := payload.PullRequest.Body
 
-	// Agent 1: Security Sentinel
-	agentWg.Add(1)
-	go func() {
-		defer agentWg.Done()
-		result := runSecuritySentinel(payload)
-		results <- result
-	}()
-
-	// Agent 2: Cost Predictor
-	agentWg.Add(1)
-	go func() {
-		defer agentWg.Done()
-		result := runCostPredictor(payload)
-		results <- result
-	}()
-
-	// Agent 3: Architecture Supervisor
-	agentWg.Add(1)
-	go func() {
-		defer agentWg.Done()
-		result := runArchitectureSupervisor(payload)
-		results <- result
-	}()
-
-	// Close results channel when all agents finish
-	go func() {
-		agentWg.Wait()
-		close(results)
-	}()
-
-	// Collect results
-	for result := range results {
-		if result.Error != nil {
-			log.Printf("ERROR: agent %s failed for PR #%d: %v",
-				result.AgentName,
-				payload.Number,
-				result.Error,
-			)
-			continue
-		}
-		log.Printf("INFO: agent %s completed for PR #%d — findings: %d",
-			result.AgentName,
+	secResult, err := wp.securityAgent.Analyze(wp.ctx, diff)
+	if err != nil {
+		log.Printf("ERROR: SecuritySentinel failed for PR #%d: %v", payload.Number, err)
+	} else {
+		log.Printf("INFO: SecuritySentinel completed for PR #%d — has_vulnerability=%v, findings=%d",
 			payload.Number,
-			result.FindingCount,
+			secResult.HasVulnerability,
+			len(secResult.Vulnerabilities),
 		)
+		for _, v := range secResult.Vulnerabilities {
+			log.Printf("  -> [%s] %s:%d — %s", v.Severity, v.FilePath, v.LineNumber, v.ExploitExplanation)
+		}
 	}
 
+	// CostPredictor and ArchitectureSupervisor wired in upcoming steps
 	log.Printf("INFO: worker %d finished PR #%d", workerID, payload.Number)
-}
-
-// AgentResult holds the outcome of a single agent run
-type AgentResult struct {
-	AgentName    string
-	FindingCount int
-	Error        error
-}
-
-// Placeholder agent functions — will be replaced with real LLM calls in next steps
-func runSecuritySentinel(payload models.WebhookPayload) AgentResult {
-	log.Printf("INFO: SecuritySentinel analyzing PR #%d", payload.Number)
-	// Real implementation coming in Step 12
-	return AgentResult{
-		AgentName:    models.AgentSecuritySentinel,
-		FindingCount: 0,
-		Error:        nil,
-	}
-}
-
-func runCostPredictor(payload models.WebhookPayload) AgentResult {
-	log.Printf("INFO: CostPredictor analyzing PR #%d", payload.Number)
-	// Real implementation coming in Step 13
-	return AgentResult{
-		AgentName:    models.AgentCostPredictor,
-		FindingCount: 0,
-		Error:        nil,
-	}
-}
-
-func runArchitectureSupervisor(payload models.WebhookPayload) AgentResult {
-	log.Printf("INFO: ArchitectureSupervisor analyzing PR #%d", payload.Number)
-	// Real implementation coming in Step 14
-	return AgentResult{
-		AgentName:    models.AgentArchitectureSupervisor,
-		FindingCount: 0,
-		Error:        nil,
-	}
 }

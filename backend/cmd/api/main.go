@@ -54,7 +54,8 @@ func main() {
 
 	// Simple job consumer (placeholder until agents are built)
 	// Start worker pool
-	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue)
+	groqClient := agents.NewGroqClient(cfg.GroqAPIKey, cfg.GroqModelID)
+	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue, groqClient)
 	pool.Start()
 	defer pool.Stop()
 	// Set up HTTP router
