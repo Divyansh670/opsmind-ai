@@ -9,7 +9,7 @@ architectural violations — before code reaches production.
 - 💰 **Cost Predictor** — Detects cloud infrastructure cost drift from IaC changes
 - 🏗️ **Architecture Supervisor** — Validates code against architectural best practices
 - 💬 **Automated PR Comments** — Posts findings directly to GitHub pull requests
-- 📊 **Engineering Dashboard** — Real-time React UI for posture reporting (coming soon)
+- 📊 **Engineering Dashboard** — Live React UI showing posture metrics, PR audits, and detailed findings
 
 ## Stack
 | Layer | Technology |
@@ -17,7 +17,7 @@ architectural violations — before code reaches production.
 | Backend | Go (Golang) |
 | Database | PostgreSQL 16 + pgvector |
 | AI/LLM | Groq API — Llama 3.3 70B |
-| Frontend | React + TypeScript |
+| Frontend | React + TypeScript (Vite) |
 | Infra | Docker, ngrok (dev), GitHub Actions (planned) |
 
 ## Current Build Status
@@ -39,7 +39,10 @@ architectural violations — before code reaches production.
 ✅ Real diff fetching from GitHub API  
 ✅ Automated Markdown comment posting back to GitHub PRs  
 ✅ **Verified end-to-end on a real GitHub repository with a real pull request**  
-⏳ React engineering dashboard  
+✅ Dashboard REST API — metrics, PR list, per-PR findings (with CORS)  
+✅ React dashboard — live MetricsGrid (critical flaws, cost drift, pass rate)  
+✅ React dashboard — PullRequestTable with status/score badges, row selection  
+✅ React dashboard — FindingDetails panel with severity, file/line, remediation  
 ⏳ MLOps feedback loop (dismiss/approve exceptions)  
 ⏳ pgvector-based architecture rule embeddings  
 ⏳ CI/CD pipeline and free-tier deployment  
@@ -58,7 +61,9 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
                                         ↓
                               PostgreSQL (findings, PR status)
                                         ↓
-                          GitHub PR Comment (Markdown summary)
+                    ┌───────────────────┴───────────────────┐
+                    ▼                                       ▼
+          GitHub PR Comment (Markdown)          React Dashboard (REST API)
 ```
 
 ## Local Development
@@ -66,7 +71,7 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
 ### Prerequisites
 - Go 1.22+
 - Docker Desktop
-- Node.js LTS
+- Node.js 22+ (LTS)
 - ngrok (for local webhook testing)
 
 ### Setup
@@ -80,9 +85,15 @@ Get-Content infra/migrations/001_init_schema.sql | docker exec -i opsmind-postgr
 # Start backend
 cd backend && go run cmd/api/main.go
 
-# In a separate terminal — expose local server for GitHub webhooks
+# Start frontend (separate terminal)
+cd frontend && npm run dev
+
+# Expose local server for GitHub webhooks (separate terminal)
 ngrok http 8080
 ```
+
+Dashboard: `http://localhost:5173`  
+Backend API: `http://localhost:8080`
 
 ### Environment Variables
 Create `backend/.env`:
@@ -107,6 +118,9 @@ MAX_WORKERS=5
 | `/health` | GET | Server + database health check |
 | `/webhook/github` | POST | GitHub webhook receiver (pull_request events) |
 | `/test/trigger` | POST | Manually injects a fake PR job for local agent testing |
+| `/api/metrics` | GET | Dashboard top-level metrics (critical flaws, cost drift, pass rate) |
+| `/api/pull-requests` | GET | List of all analyzed PRs |
+| `/api/pull-requests/{id}/findings` | GET | All agent findings for a specific PR |
 
 ## Project Structure
 ```
@@ -115,6 +129,9 @@ opsmind-ai/
 │   ├── cmd/api/
 │   │   └── main.go                       # Entry point, router, graceful shutdown
 │   ├── internal/
+│   │   ├── api/
+│   │   │   ├── dashboard_handler.go      # Metrics, PR list, findings endpoints
+│   │   │   └── cors.go                   # CORS middleware for React dev server
 │   │   ├── config/
 │   │   │   └── config.go                 # Environment config management
 │   │   ├── db/
@@ -135,7 +152,19 @@ opsmind-ai/
 │   │       └── comment_formatter.go      # Markdown comment builder
 │   ├── go.mod
 │   └── .env                              # Local secrets (gitignored)
-├── frontend/                             # React dashboard (coming soon)
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── client.ts                 # Axios client for backend API
+│   │   ├── components/
+│   │   │   ├── Layout.tsx                # Header/nav shell
+│   │   │   ├── MetricsGrid.tsx           # 3 top-level metric cards
+│   │   │   ├── PullRequestTable.tsx      # PR list with badges
+│   │   │   └── FindingDetails.tsx        # Per-PR findings panel
+│   │   ├── types/
+│   │   │   └── api.ts                    # TypeScript types mirroring Go models
+│   │   └── App.tsx                       # Dashboard page composition
+│   └── package.json
 ├── infra/
 │   ├── docker-compose.yml                # PostgreSQL + pgvector container
 │   └── migrations/
@@ -144,5 +173,6 @@ opsmind-ai/
 ```
 
 ## Status
-🚧 Core AI review engine is fully functional and verified on real GitHub PRs. 
-Now building the dashboard and feedback loop.
+🚧 Core AI review engine and live dashboard are fully functional, verified end-to-end 
+on a real GitHub repository. Now building the MLOps feedback loop (dismiss/approve 
+exceptions) and preparing for free-tier deployment.
