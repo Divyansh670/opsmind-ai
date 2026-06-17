@@ -87,3 +87,115 @@ func (r *Repository) InsertFinding(ctx context.Context, finding models.AgentFind
 	}
 	return nil
 }
+// PullRequestWithRepo is a PR joined with its repository name, used for dashboard display
+type PullRequestWithRepo struct {
+	models.PullRequest
+	RepoName string `json:"repo_name"`
+}
+
+// GetAllPullRequests fetches all PRs joined with their repo name, newest first
+func (r *Repository) GetAllPullRequests(ctx context.Context) ([]PullRequestWithRepo, error) {
+	query := `
+		SELECT pr.id, pr.repo_id, pr.pr_number, pr.head_commit, pr.author, pr.status,
+		       pr.security_score, pr.cost_drift_usd, pr.created_at, pr.updated_at,
+		       repo.repo_name
+		FROM pull_requests pr
+		JOIN repositories repo ON repo.id = pr.repo_id
+		ORDER BY pr.updated_at DESC
+		LIMIT 50
+	`
+	rows, err := r.db.Pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pull requests: %w", err)
+	}
+	defer rows.Close()
+
+	var prs []PullRequestWithRepo
+	for rows.Next() {
+		var pr PullRequestWithRepo
+		err := rows.Scan(
+			&pr.ID, &pr.RepoID, &pr.PRNumber, &pr.HeadCommit, &pr.Author, &pr.Status,
+			&pr.SecurityScore, &pr.CostDriftUSD, &pr.CreatedAt, &pr.UpdatedAt,
+			&pr.RepoName,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan pull request row: %w", err)
+		}
+		prs = append(prs, pr)
+	}
+	return prs, nil
+}
+
+// GetFindingsForPR fetches all findings for a given PR ID
+func (r *Repository) GetFindingsForPR(ctx context.Context, prID int) ([]models.AgentFinding, error) {
+	query := `
+		SELECT id, pr_id, agent_name, severity, cwe_id, file_path, line_number,
+		       description, remediation, dismissed, dismiss_reason, created_at
+		FROM agent_findings
+		WHERE pr_id = $1
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, prID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch findings: %w", err)
+	}
+	defer rows.Close()
+
+	var findings []models.AgentFinding
+	for rows.Next() {
+		var f models.AgentFinding
+		var cweID, filePath, dismissReason *string
+		err := rows.Scan(
+			&f.ID, &f.PRID, &f.AgentName, &f.Severity, &cweID, &filePath, &f.LineNumber,
+			&f.Description, &f.Remediation, &f.Dismissed, &dismissReason, &f.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan finding row: %w", err)
+		}
+		if cweID != nil {
+			f.CWEID = *cweID
+		}
+		if filePath != nil {
+			f.FilePath = *filePath
+		}
+		if dismissReason != nil {
+			f.DismissReason = *dismissReason
+		}
+		findings = append(findings, f)
+	}
+	return findings, nil
+}
+
+// GetDashboardMetrics computes the 3 top-level metrics for the dashboard
+func (r *Repository) GetDashboardMetrics(ctx context.Context) (criticalFlaws int, costDrift float64, passRate float64, err error) {
+	err = r.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM agent_findings WHERE severity = 'CRITICAL' AND dismissed = FALSE
+	`).Scan(&criticalFlaws)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count critical flaws: %w", err)
+	}
+
+	err = r.db.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(cost_drift_usd), 0) FROM pull_requests
+		WHERE created_at > NOW() - INTERVAL '30 days'
+	`).Scan(&costDrift)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to sum cost drift: %w", err)
+	}
+
+	var total, approved int
+	err = r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM pull_requests`).Scan(&total)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count total PRs: %w", err)
+	}
+	err = r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM pull_requests WHERE status = 'APPROVED'`).Scan(&approved)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count approved PRs: %w", err)
+	}
+
+	if total > 0 {
+		passRate = (float64(approved) / float64(total)) * 100
+	}
+
+	return criticalFlaws, costDrift, passRate, nil
+}

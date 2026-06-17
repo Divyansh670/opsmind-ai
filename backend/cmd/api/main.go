@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Divyansh670/opsmind-ai/backend/internal/agents"
+	"github.com/Divyansh670/opsmind-ai/backend/internal/api"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/config"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/db"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
@@ -88,13 +89,18 @@ func main() {
 
 	// GitHub webhook endpoint
 	mux.HandleFunc("/webhook/github", webhookHandler.HandleWebhook)
+	// Dashboard API endpoints
+	dashboardHandler := api.NewDashboardHandler(repo)
+	mux.HandleFunc("/api/metrics", dashboardHandler.HandleMetrics)
+	mux.HandleFunc("/api/pull-requests", dashboardHandler.HandlePullRequests)
+	mux.HandleFunc("/api/pull-requests/", dashboardHandler.HandleFindingsForPR)
 	testHandler := webhook.NewTestTriggerHandler(jobQueue)
 	mux.HandleFunc("/test/trigger", testHandler.HandleTestTrigger)
 
 	// Build server
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
-		Handler:      mux,
+		Handler:      api.CORSMiddleware(mux),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
