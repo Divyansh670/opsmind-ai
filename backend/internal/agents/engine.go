@@ -21,10 +21,11 @@ type WorkerPool struct {
 	costAgent         *CostPredictorAgent
 	architectureAgent *ArchitectureSupervisorAgent
 	repo              *db.Repository
+	githubClient      *GitHubClient
 }
 
 // NewWorkerPool creates a new worker pool
-func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqClient *GroqClient, repo *db.Repository) *WorkerPool {
+func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqClient *GroqClient, repo *db.Repository, githubClient *GitHubClient) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
 		jobChannel:        jobChannel,
@@ -35,6 +36,7 @@ func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqCl
 		costAgent:         NewCostPredictorAgent(groqClient),
 		architectureAgent: NewArchitectureSupervisorAgent(groqClient),
 		repo:              repo,
+		githubClient:      githubClient,
 	}
 }
 
@@ -81,6 +83,14 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 
 	ctx := wp.ctx
 	diff := payload.PullRequest.Body
+
+	realDiff, err := wp.githubClient.FetchPRDiff(ctx, payload.Repository.FullName, payload.Number)
+	if err != nil {
+		log.Printf("WARN: failed to fetch real diff for PR #%d, falling back to PR body: %v", payload.Number, err)
+	} else if realDiff != "" {
+		diff = realDiff
+		log.Printf("INFO: fetched real diff for PR #%d (%d bytes)", payload.Number, len(diff))
+	}
 
 	// 1. Upsert repository and PR records first
 	repoID, err := wp.repo.UpsertRepository(ctx, payload.Repository.FullName, payload.Repository.CloneURL)

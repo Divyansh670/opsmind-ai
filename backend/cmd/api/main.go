@@ -55,8 +55,9 @@ func main() {
 	// Simple job consumer (placeholder until agents are built)
 	// Start worker pool
 	groqClient := agents.NewGroqClient(cfg.GroqAPIKey, cfg.GroqModelID)
+	githubClient := agents.NewGitHubClient(cfg.GitHubToken)
 	repo := db.NewRepository(database)
-	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue, groqClient, repo)
+	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue, groqClient, repo, githubClient)
 	pool.Start()
 	defer pool.Stop()
 	// Set up HTTP router
