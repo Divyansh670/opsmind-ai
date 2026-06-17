@@ -76,7 +76,7 @@ func (wp *WorkerPool) worker(id int) {
 	}
 }
 
-// processJob runs all 3 agents concurrently and persists everything to the database
+// processJob runs all 3 agents concurrently, persists findings, and posts a GitHub comment
 func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 	log.Printf("INFO: worker %d processing PR #%d from %s",
 		workerID, payload.Number, payload.Repository.FullName)
@@ -92,7 +92,6 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 		log.Printf("INFO: fetched real diff for PR #%d (%d bytes)", payload.Number, len(diff))
 	}
 
-	// 1. Upsert repository and PR records first
 	repoID, err := wp.repo.UpsertRepository(ctx, payload.Repository.FullName, payload.Repository.CloneURL)
 	if err != nil {
 		log.Printf("ERROR: failed to upsert repository for PR #%d: %v", payload.Number, err)
@@ -118,32 +117,34 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 		models.SeverityLow:      20,
 	}
 
+	var secResult *models.SecuritySentinelResponse
+	var costResult *models.CostPredictorResponse
+	var archResult *models.ArchitectureSupervisorResponse
+
 	// Security Sentinel
 	agentWg.Add(1)
 	go func() {
 		defer agentWg.Done()
-		secResult, err := wp.securityAgent.Analyze(ctx, diff)
+		result, err := wp.securityAgent.Analyze(ctx, diff)
 		if err != nil {
 			log.Printf("ERROR: SecuritySentinel failed for PR #%d: %v", payload.Number, err)
 			return
 		}
-		log.Printf("INFO: SecuritySentinel completed for PR #%d — findings=%d", payload.Number, len(secResult.Vulnerabilities))
+		log.Printf("INFO: SecuritySentinel completed for PR #%d — findings=%d", payload.Number, len(result.Vulnerabilities))
 
-		for _, v := range secResult.Vulnerabilities {
+		mu.Lock()
+		secResult = result
+		mu.Unlock()
+
+		for _, v := range result.Vulnerabilities {
 			finding := models.AgentFinding{
-				PRID:        prID,
-				AgentName:   models.AgentSecuritySentinel,
-				Severity:    v.Severity,
-				CWEID:       v.CWEID,
-				FilePath:    v.FilePath,
-				LineNumber:  v.LineNumber,
-				Description: v.ExploitExplanation,
-				Remediation: v.RemediationSnippet,
+				PRID: prID, AgentName: models.AgentSecuritySentinel, Severity: v.Severity,
+				CWEID: v.CWEID, FilePath: v.FilePath, LineNumber: v.LineNumber,
+				Description: v.ExploitExplanation, Remediation: v.RemediationSnippet,
 			}
 			if err := wp.repo.InsertFinding(ctx, finding); err != nil {
 				log.Printf("ERROR: failed to save security finding: %v", err)
 			}
-
 			mu.Lock()
 			if score := severityToScore[v.Severity]; score > highestSeverityScore {
 				highestSeverityScore = score
@@ -159,26 +160,27 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 	agentWg.Add(1)
 	go func() {
 		defer agentWg.Done()
-		costResult, err := wp.costAgent.Analyze(ctx, diff)
+		result, err := wp.costAgent.Analyze(ctx, diff)
 		if err != nil {
 			log.Printf("ERROR: CostPredictor failed for PR #%d: %v", payload.Number, err)
 			return
 		}
-		log.Printf("INFO: CostPredictor completed for PR #%d — drift_usd=%.2f", payload.Number, costResult.DriftUSD)
+		log.Printf("INFO: CostPredictor completed for PR #%d — drift_usd=%.2f", payload.Number, result.DriftUSD)
 
-		if costResult.HasDrift {
+		mu.Lock()
+		costResult = result
+		mu.Unlock()
+
+		if result.HasDrift {
 			finding := models.AgentFinding{
-				PRID:        prID,
-				AgentName:   models.AgentCostPredictor,
-				Severity:    models.SeverityMedium,
-				Description: costResult.DriftExplanation,
+				PRID: prID, AgentName: models.AgentCostPredictor, Severity: models.SeverityMedium,
+				Description: result.DriftExplanation,
 			}
 			if err := wp.repo.InsertFinding(ctx, finding); err != nil {
 				log.Printf("ERROR: failed to save cost finding: %v", err)
 			}
-
 			mu.Lock()
-			totalCostDrift += costResult.DriftUSD
+			totalCostDrift += result.DriftUSD
 			mu.Unlock()
 		}
 	}()
@@ -187,22 +189,22 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 	agentWg.Add(1)
 	go func() {
 		defer agentWg.Done()
-		archResult, err := wp.architectureAgent.Analyze(ctx, diff)
+		result, err := wp.architectureAgent.Analyze(ctx, diff)
 		if err != nil {
 			log.Printf("ERROR: ArchitectureSupervisor failed for PR #%d: %v", payload.Number, err)
 			return
 		}
-		log.Printf("INFO: ArchitectureSupervisor completed for PR #%d — issues=%d", payload.Number, len(archResult.Issues))
+		log.Printf("INFO: ArchitectureSupervisor completed for PR #%d — issues=%d", payload.Number, len(result.Issues))
 
-		for _, issue := range archResult.Issues {
+		mu.Lock()
+		archResult = result
+		mu.Unlock()
+
+		for _, issue := range result.Issues {
 			finding := models.AgentFinding{
-				PRID:        prID,
-				AgentName:   models.AgentArchitectureSupervisor,
-				Severity:    models.SeverityLow,
-				FilePath:    issue.FilePath,
-				LineNumber:  issue.LineNumber,
-				Description: issue.Description,
-				Remediation: issue.Suggestion,
+				PRID: prID, AgentName: models.AgentArchitectureSupervisor, Severity: models.SeverityLow,
+				FilePath: issue.FilePath, LineNumber: issue.LineNumber,
+				Description: issue.Description, Remediation: issue.Suggestion,
 			}
 			if err := wp.repo.InsertFinding(ctx, finding); err != nil {
 				log.Printf("ERROR: failed to save architecture finding: %v", err)
@@ -212,7 +214,6 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 
 	agentWg.Wait()
 
-	// 2. Update PR status based on findings
 	finalStatus := models.PRStatusApproved
 	if hasCritical {
 		finalStatus = models.PRStatusFlagged
@@ -222,6 +223,13 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 
 	if err := wp.repo.UpdatePRStatus(ctx, prID, finalStatus, highestSeverityScore, totalCostDrift); err != nil {
 		log.Printf("ERROR: failed to update PR status for PR #%d: %v", payload.Number, err)
+	}
+
+	commentBody := FormatFindingsComment(secResult, costResult, archResult)
+	if err := wp.githubClient.PostPRComment(ctx, payload.Repository.FullName, payload.Number, commentBody); err != nil {
+		log.Printf("WARN: failed to post GitHub comment for PR #%d: %v", payload.Number, err)
+	} else {
+		log.Printf("INFO: posted summary comment to GitHub for PR #%d", payload.Number)
 	}
 
 	log.Printf("INFO: worker %d finished PR #%d — status=%s, score=%d, cost_drift=$%.2f",
