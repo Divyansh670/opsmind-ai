@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -57,4 +58,35 @@ func (c *GitHubClient) FetchPRDiff(ctx context.Context, repoFullName string, prN
 	}
 
 	return string(diffBytes), nil
+}
+
+// PostPRComment posts a general comment on a pull request (not tied to a specific line)
+func (c *GitHubClient) PostPRComment(ctx context.Context, repoFullName string, prNumber int, body string) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d/comments", repoFullName, prNumber)
+
+	payload := fmt.Sprintf(`{"body": %q}`, body)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create comment request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to post PR comment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("github API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
 }
