@@ -17,6 +17,7 @@ type WorkerPool struct {
 	cancel     context.CancelFunc
 
 	securityAgent *SecuritySentinelAgent
+	costAgent     *CostPredictorAgent
 }
 
 // NewWorkerPool creates a new worker pool
@@ -28,6 +29,7 @@ func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqCl
 		ctx:           ctx,
 		cancel:        cancel,
 		securityAgent: NewSecuritySentinelAgent(groqClient),
+		costAgent:     NewCostPredictorAgent(groqClient),
 	}
 }
 
@@ -70,7 +72,7 @@ func (wp *WorkerPool) worker(id int) {
 	}
 }
 
-// processJob runs the security agent (and placeholders for the other 2) for a single PR
+// processJob runs Security Sentinel and Cost Predictor concurrently for a single PR
 func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 	log.Printf("INFO: worker %d processing PR #%d from %s",
 		workerID,
@@ -78,24 +80,53 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 		payload.Repository.FullName,
 	)
 
-	// NOTE: real diff fetching from GitHub comes in a later step.
-	// For now we use the PR body as a placeholder diff source for testing.
 	diff := payload.PullRequest.Body
 
-	secResult, err := wp.securityAgent.Analyze(wp.ctx, diff)
-	if err != nil {
-		log.Printf("ERROR: SecuritySentinel failed for PR #%d: %v", payload.Number, err)
-	} else {
+	var agentWg sync.WaitGroup
+
+	// Run Security Sentinel
+	agentWg.Add(1)
+	go func() {
+		defer agentWg.Done()
+		secResult, err := wp.securityAgent.Analyze(wp.ctx, diff)
+		if err != nil {
+			log.Printf("ERROR: SecuritySentinel failed for PR #%d: %v", payload.Number, err)
+			return
+		}
 		log.Printf("INFO: SecuritySentinel completed for PR #%d — has_vulnerability=%v, findings=%d",
 			payload.Number,
 			secResult.HasVulnerability,
 			len(secResult.Vulnerabilities),
 		)
 		for _, v := range secResult.Vulnerabilities {
-			log.Printf("  -> [%s] %s:%d — %s", v.Severity, v.FilePath, v.LineNumber, v.ExploitExplanation)
+			log.Printf("  -> [SECURITY][%s] %s:%d — %s", v.Severity, v.FilePath, v.LineNumber, v.ExploitExplanation)
 		}
-	}
+	}()
 
-	// CostPredictor and ArchitectureSupervisor wired in upcoming steps
+	// Run Cost Predictor
+	agentWg.Add(1)
+	go func() {
+		defer agentWg.Done()
+		costResult, err := wp.costAgent.Analyze(wp.ctx, diff)
+		if err != nil {
+			log.Printf("ERROR: CostPredictor failed for PR #%d: %v", payload.Number, err)
+			return
+		}
+		log.Printf("INFO: CostPredictor completed for PR #%d — has_drift=%v, drift_usd=%.2f",
+			payload.Number,
+			costResult.HasDrift,
+			costResult.DriftUSD,
+		)
+		if costResult.HasDrift {
+			log.Printf("  -> [COST] $%.2f/mo — %s (services: %v)",
+				costResult.DriftUSD,
+				costResult.DriftExplanation,
+				costResult.AffectedServices,
+			)
+		}
+	}()
+
+	agentWg.Wait()
+
 	log.Printf("INFO: worker %d finished PR #%d", workerID, payload.Number)
 }

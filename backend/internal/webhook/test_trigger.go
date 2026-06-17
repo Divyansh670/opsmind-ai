@@ -31,6 +31,16 @@ func (h *TestTriggerHandler) HandleTestTrigger(w http.ResponseWriter, r *http.Re
  	token := jwt.New(jwt.SigningMethodHS256)
  	return token.SignedString([]byte(secret))
  }
+
+--- a/infra/main.tf
++++ b/infra/main.tf
+@@ -10,7 +10,7 @@
+ resource "aws_db_instance" "primary" {
+-  instance_class = "db.t3.medium"
++  instance_class = "db.r5.4xlarge"
+   allocated_storage = 100
+   engine = "postgres"
+ }
 `
 
 	testPayload := models.WebhookPayload{
