@@ -7,8 +7,9 @@ architectural violations — before code reaches production.
 ## What It Does
 - 🔐 **Security Sentinel** — Scans diffs for hardcoded secrets, injection vectors, and CVEs
 - 💰 **Cost Predictor** — Detects cloud infrastructure cost drift from IaC changes
-- 🏗️ **Architecture Supervisor** — Validates code against company-wide architectural rules
-- 📊 **Engineering Dashboard** — Real-time React UI for posture reporting and findings
+- 🏗️ **Architecture Supervisor** — Validates code against architectural best practices
+- 💬 **Automated PR Comments** — Posts findings directly to GitHub pull requests
+- 📊 **Engineering Dashboard** — Real-time React UI for posture reporting (coming soon)
 
 ## Stack
 | Layer | Technology |
@@ -17,7 +18,7 @@ architectural violations — before code reaches production.
 | Database | PostgreSQL 16 + pgvector |
 | AI/LLM | Groq API — Llama 3.3 70B |
 | Frontend | React + TypeScript |
-| Infra | Docker, GitHub Actions |
+| Infra | Docker, ngrok (dev), GitHub Actions (planned) |
 
 ## Current Build Status
 ✅ Project structure and Git repository  
@@ -29,18 +30,35 @@ architectural violations — before code reaches production.
 ✅ GitHub webhook handler with HMAC-SHA256 signature validation  
 ✅ Database models and structs for all entities  
 ✅ Job queue for async PR processing  
-⏳ AI agent layer (Security Sentinel, Cost Predictor, Architecture Supervisor)  
-⏳ Groq LLM integration and structured output parsing  
-⏳ GitHub PR comment posting  
-⏳ React dashboard  
-⏳ MLOps feedback loop  
-⏳ CI/CD pipeline and deployment  
+✅ Concurrent worker pool (goroutines + channels)  
+✅ Groq LLM client integration  
+✅ Security Sentinel agent — hardcoded secrets, injection vectors, CWE tagging  
+✅ Cost Predictor agent — IaC cost drift estimation in USD/month  
+✅ Architecture Supervisor agent — pattern violation detection  
+✅ All 3 agents run concurrently per PR and findings persist to PostgreSQL  
+✅ Real diff fetching from GitHub API  
+✅ Automated Markdown comment posting back to GitHub PRs  
+✅ **Verified end-to-end on a real GitHub repository with a real pull request**  
+⏳ React engineering dashboard  
+⏳ MLOps feedback loop (dismiss/approve exceptions)  
+⏳ pgvector-based architecture rule embeddings  
+⏳ CI/CD pipeline and free-tier deployment  
 
 ## Architecture
 ```
-GitHub PR → Webhook → Go Backend → Job Queue → AI Agents → PostgreSQL
-                                                          → GitHub Comments
-                                                          → React Dashboard
+GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
+                                                        ↓
+                                    Concurrent Worker Pool (goroutines)
+                                                        ↓
+                        ┌───────────────┬───────────────┬─────────────────────┐
+                        ▼               ▼               ▼
+              Security Sentinel   Cost Predictor   Architecture Supervisor
+                        │               │               │
+                        └───────────────┴───────────────┘
+                                        ↓
+                              PostgreSQL (findings, PR status)
+                                        ↓
+                          GitHub PR Comment (Markdown summary)
 ```
 
 ## Local Development
@@ -49,6 +67,7 @@ GitHub PR → Webhook → Go Backend → Job Queue → AI Agents → PostgreSQL
 - Go 1.22+
 - Docker Desktop
 - Node.js LTS
+- ngrok (for local webhook testing)
 
 ### Setup
 ```bash
@@ -60,6 +79,9 @@ Get-Content infra/migrations/001_init_schema.sql | docker exec -i opsmind-postgr
 
 # Start backend
 cd backend && go run cmd/api/main.go
+
+# In a separate terminal — expose local server for GitHub webhooks
+ngrok http 8080
 ```
 
 ### Environment Variables
@@ -72,8 +94,8 @@ DB_USER=opsmind_user
 DB_PASSWORD=opsmind_pass_dev
 DB_NAME=opsmind_db
 DB_SSL_MODE=disable
-GITHUB_WEBHOOK_SECRET=
-GITHUB_TOKEN=
+GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
+GITHUB_TOKEN=your_github_pat_here
 GROQ_API_KEY=your_groq_key_here
 GROQ_MODEL_ID=llama-3.3-70b-versatile
 MAX_WORKERS=5
@@ -83,34 +105,44 @@ MAX_WORKERS=5
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Server + database health check |
-| `/webhook/github` | POST | GitHub webhook receiver |
+| `/webhook/github` | POST | GitHub webhook receiver (pull_request events) |
+| `/test/trigger` | POST | Manually injects a fake PR job for local agent testing |
 
 ## Project Structure
 ```
 opsmind-ai/
 ├── backend/
 │   ├── cmd/api/
-│   │   └── main.go              # Entry point, router, graceful shutdown
+│   │   └── main.go                       # Entry point, router, graceful shutdown
 │   ├── internal/
 │   │   ├── config/
-│   │   │   └── config.go        # Environment config management
+│   │   │   └── config.go                 # Environment config management
 │   │   ├── db/
-│   │   │   └── postgres.go      # PostgreSQL connection pool
+│   │   │   ├── postgres.go               # PostgreSQL connection pool
+│   │   │   └── repository.go             # All DB read/write operations
 │   │   ├── models/
-│   │   │   └── structures.go    # All entity structs and constants
+│   │   │   └── structures.go             # All entity structs and constants
 │   │   ├── webhook/
-│   │   │   └── handler.go       # GitHub webhook + HMAC-SHA256 validation
-│   │   ├── agents/              # AI agents (coming soon)
-│   │   └── middleware/          # HTTP middleware (coming soon)
+│   │   │   ├── handler.go                # GitHub webhook + HMAC-SHA256 validation
+│   │   │   └── test_trigger.go           # Manual test trigger endpoint
+│   │   └── agents/
+│   │       ├── engine.go                 # Concurrent worker pool / orchestrator
+│   │       ├── groq_client.go            # Groq LLM API client
+│   │       ├── github_client.go          # GitHub API client (diff fetch + comments)
+│   │       ├── security_sentinel.go      # Security agent
+│   │       ├── cost_predictor.go         # Cost agent
+│   │       ├── architecture_supervisor.go # Architecture agent
+│   │       └── comment_formatter.go      # Markdown comment builder
 │   ├── go.mod
-│   └── .env                     # Local secrets (gitignored)
-├── frontend/                    # React dashboard (coming soon)
+│   └── .env                              # Local secrets (gitignored)
+├── frontend/                             # React dashboard (coming soon)
 ├── infra/
-│   ├── docker-compose.yml       # PostgreSQL + pgvector container
+│   ├── docker-compose.yml                # PostgreSQL + pgvector container
 │   └── migrations/
-│       └── 001_init_schema.sql  # Full database schema
-└── docs/                        # Architecture docs (coming soon)
+│       └── 001_init_schema.sql           # Full database schema
+└── docs/                                 # Architecture docs (coming soon)
 ```
 
 ## Status
-🚧 Actively being built — follow along for daily progress
+🚧 Core AI review engine is fully functional and verified on real GitHub PRs. 
+Now building the dashboard and feedback loop.
