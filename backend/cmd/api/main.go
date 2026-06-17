@@ -86,6 +86,8 @@ func main() {
 
 	// GitHub webhook endpoint
 	mux.HandleFunc("/webhook/github", webhookHandler.HandleWebhook)
+	testHandler := webhook.NewTestTriggerHandler(jobQueue)
+	mux.HandleFunc("/test/trigger", testHandler.HandleTestTrigger)
 
 	// Build server
 	server := &http.Server{
