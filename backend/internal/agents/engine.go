@@ -16,20 +16,22 @@ type WorkerPool struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 
-	securityAgent *SecuritySentinelAgent
-	costAgent     *CostPredictorAgent
+	securityAgent     *SecuritySentinelAgent
+	costAgent         *CostPredictorAgent
+	architectureAgent *ArchitectureSupervisorAgent
 }
 
 // NewWorkerPool creates a new worker pool
 func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqClient *GroqClient) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
-		jobChannel:    jobChannel,
-		maxWorkers:    maxWorkers,
-		ctx:           ctx,
-		cancel:        cancel,
-		securityAgent: NewSecuritySentinelAgent(groqClient),
-		costAgent:     NewCostPredictorAgent(groqClient),
+		jobChannel:        jobChannel,
+		maxWorkers:        maxWorkers,
+		ctx:               ctx,
+		cancel:            cancel,
+		securityAgent:     NewSecuritySentinelAgent(groqClient),
+		costAgent:         NewCostPredictorAgent(groqClient),
+		architectureAgent: NewArchitectureSupervisorAgent(groqClient),
 	}
 }
 
@@ -72,7 +74,7 @@ func (wp *WorkerPool) worker(id int) {
 	}
 }
 
-// processJob runs Security Sentinel and Cost Predictor concurrently for a single PR
+// processJob runs all 3 agents concurrently for a single PR
 func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 	log.Printf("INFO: worker %d processing PR #%d from %s",
 		workerID,
@@ -123,6 +125,26 @@ func (wp *WorkerPool) processJob(workerID int, payload models.WebhookPayload) {
 				costResult.DriftExplanation,
 				costResult.AffectedServices,
 			)
+		}
+	}()
+
+	// Run Architecture Supervisor
+	agentWg.Add(1)
+	go func() {
+		defer agentWg.Done()
+		archResult, err := wp.architectureAgent.Analyze(wp.ctx, diff)
+		if err != nil {
+			log.Printf("ERROR: ArchitectureSupervisor failed for PR #%d: %v", payload.Number, err)
+			return
+		}
+		log.Printf("INFO: ArchitectureSupervisor completed for PR #%d — has_issues=%v, issues=%d",
+			payload.Number,
+			archResult.HasIssues,
+			len(archResult.Issues),
+		)
+		for _, issue := range archResult.Issues {
+			log.Printf("  -> [ARCHITECTURE] %s:%d — %s | suggestion: %s",
+				issue.FilePath, issue.LineNumber, issue.Description, issue.Suggestion)
 		}
 	}()
 

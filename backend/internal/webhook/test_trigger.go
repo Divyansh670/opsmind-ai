@@ -41,6 +41,18 @@ func (h *TestTriggerHandler) HandleTestTrigger(w http.ResponseWriter, r *http.Re
    allocated_storage = 100
    engine = "postgres"
  }
+
+--- a/internal/handlers/user_handler.go
++++ b/internal/handlers/user_handler.go
+@@ -15,6 +15,10 @@
+ func GetUserHandler(w http.ResponseWriter, r *http.Request) {
++	db, _ := sql.Open("postgres", connStr)
++	rows, _ := db.Query("SELECT * FROM users WHERE id = $1", r.URL.Query().Get("id"))
++	defer rows.Close()
++	// directly querying DB from handler instead of using repository layer
+ 	userID := r.URL.Query().Get("id")
+ 	json.NewEncoder(w).Encode(userID)
+ }
 `
 
 	testPayload := models.WebhookPayload{
