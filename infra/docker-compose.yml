@@ -12,6 +12,47 @@ services:
       - "5434:5432"
     volumes:
       - opsmind_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsmind_user -d opsmind_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: opsmind-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: opsmind_user
+      DB_PASSWORD: opsmind_pass_dev
+      DB_NAME: opsmind_db
+      DB_SSL_MODE: disable
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL_ID: llama-3.3-70b-versatile
+      MAX_WORKERS: "5"
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: opsmind-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
 
 volumes:
   opsmind_pg_data:
