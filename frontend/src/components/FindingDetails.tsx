@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Shield, DollarSign, Building2 } from 'lucide-react';
-import { apiClient } from '../api/client';
+import { Shield, DollarSign, Building2, X, CheckCheck } from 'lucide-react';
+import { apiClient, dismissFinding } from '../api/client';
 import type { AgentFinding, PullRequest } from '../types/api';
 
 interface FindingDetailsProps {
   selectedPR: PullRequest | null;
+  onFindingDismissed: () => void;
 }
 
-export default function FindingDetails({ selectedPR }: FindingDetailsProps) {
+export default function FindingDetails({ selectedPR, onFindingDismissed }: FindingDetailsProps) {
   const [findings, setFindings] = useState<AgentFinding[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -32,10 +33,31 @@ export default function FindingDetails({ selectedPR }: FindingDetailsProps) {
     }
   }
 
+  async function handleDismiss(
+    findingId: number,
+    action: 'DISMISSED' | 'APPROVED_EXCEPTION'
+  ) {
+    const reason =
+      action === 'DISMISSED'
+        ? 'False positive — dismissed by engineer'
+        : 'Exception approved by engineer';
+    try {
+      await dismissFinding(findingId, action, reason);
+      // Remove dismissed finding from local state immediately
+      setFindings((prev) => prev.filter((f) => f.id !== findingId));
+      // Refresh metrics in parent
+      onFindingDismissed();
+    } catch (err) {
+      console.error('Failed to dismiss finding:', err);
+    }
+  }
+
   if (!selectedPR) {
     return (
       <div style={styles.container}>
-        <p style={styles.emptyText}>Select a pull request above to view detailed findings.</p>
+        <p style={styles.emptyText}>
+          Select a pull request above to view detailed findings.
+        </p>
       </div>
     );
   }
@@ -43,24 +65,41 @@ export default function FindingDetails({ selectedPR }: FindingDetailsProps) {
   return (
     <div style={styles.container}>
       <h2 style={styles.title}>
-        CONTEXTUAL FINDINGS PANEL: PR #{selectedPR.pr_number} ({selectedPR.repo_name})
+        CONTEXTUAL FINDINGS PANEL: PR #{selectedPR.pr_number} (
+        {selectedPR.repo_name})
       </h2>
 
       {loading && <p style={styles.emptyText}>Loading findings...</p>}
 
       {!loading && findings.length === 0 && (
-        <p style={styles.emptyText}>✅ No findings for this PR — clean audit.</p>
+        <p style={styles.emptyText}>
+          ✅ No active findings for this PR — clean audit.
+        </p>
       )}
 
       {!loading &&
-        findings.map((finding) => (
-          <FindingCard key={finding.id} finding={finding} />
-        ))}
+        findings
+          .filter((f) => !f.dismissed)
+          .map((finding) => (
+            <FindingCard
+              key={finding.id}
+              finding={finding}
+              onDismiss={handleDismiss}
+            />
+          ))}
     </div>
   );
 }
 
-function FindingCard({ finding }: { finding: AgentFinding }) {
+interface FindingCardProps {
+  finding: AgentFinding;
+  onDismiss: (
+    id: number,
+    action: 'DISMISSED' | 'APPROVED_EXCEPTION'
+  ) => void;
+}
+
+function FindingCard({ finding, onDismiss }: FindingCardProps) {
   const agentMeta = getAgentMeta(finding.agent_name);
   const severityColor = getSeverityColor(finding.severity);
 
@@ -71,16 +110,49 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
           {agentMeta.icon}
           <span style={{ color: agentMeta.color }}>{finding.agent_name}</span>
         </div>
-        <span style={{ ...styles.severityBadge, borderColor: severityColor, color: severityColor }}>
+        <span
+          style={{
+            ...styles.severityBadge,
+            borderColor: severityColor,
+            color: severityColor,
+          }}
+        >
           {finding.severity}
         </span>
-        {finding.cwe_id && <span style={styles.cweTag}>{finding.cwe_id}</span>}
+        {finding.cwe_id && (
+          <span style={styles.cweTag}>{finding.cwe_id}</span>
+        )}
+
+        {/* Action buttons */}
+        <div style={styles.actions}>
+          <button
+            style={styles.dismissBtn}
+            onClick={() => onDismiss(finding.id, 'DISMISSED')}
+            title="Dismiss as False Positive"
+          >
+            <X size={12} />
+            False Positive
+          </button>
+          <button
+            style={styles.approveBtn}
+            onClick={() => onDismiss(finding.id, 'APPROVED_EXCEPTION')}
+            title="Approve Exception"
+          >
+            <CheckCheck size={12} />
+            Approve Exception
+          </button>
+        </div>
       </div>
 
       {finding.file_path && (
         <div style={styles.fileLine}>
           File: <code style={styles.code}>{finding.file_path}</code>
-          {finding.line_number > 0 && <> | Line: <code style={styles.code}>{finding.line_number}</code></>}
+          {finding.line_number > 0 && (
+            <>
+              {' '}
+              | Line: <code style={styles.code}>{finding.line_number}</code>
+            </>
+          )}
         </div>
       )}
 
@@ -101,9 +173,15 @@ function getAgentMeta(agentName: string) {
     case 'SecuritySentinel':
       return { icon: <Shield size={14} color="#f87171" />, color: '#f87171' };
     case 'CostPredictor':
-      return { icon: <DollarSign size={14} color="#fbbf24" />, color: '#fbbf24' };
+      return {
+        icon: <DollarSign size={14} color="#fbbf24" />,
+        color: '#fbbf24',
+      };
     case 'ArchitectureSupervisor':
-      return { icon: <Building2 size={14} color="#60a5fa" />, color: '#60a5fa' };
+      return {
+        icon: <Building2 size={14} color="#60a5fa" />,
+        color: '#60a5fa',
+      };
     default:
       return { icon: null, color: '#9ca3af' };
   }
@@ -154,6 +232,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     gap: 10,
     marginBottom: 10,
+    flexWrap: 'wrap' as const,
   },
   agentBadge: {
     display: 'flex',
@@ -176,6 +255,35 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '2px 8px',
     borderRadius: 6,
   },
+  actions: {
+    display: 'flex',
+    gap: 6,
+    marginLeft: 'auto',
+  },
+  dismissBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'transparent',
+    border: '1px solid #374151',
+    color: '#9ca3af',
+    borderRadius: 6,
+    padding: '4px 10px',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
+  approveBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'transparent',
+    border: '1px solid #1f3328',
+    color: '#34d399',
+    borderRadius: 6,
+    padding: '4px 10px',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
   fileLine: {
     fontSize: 12,
     color: '#9ca3af',
@@ -192,7 +300,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#d1d5db',
     lineHeight: 1.5,
     marginBottom: 8,
-},
+  },
   remediationBox: {
     fontSize: 12,
     backgroundColor: '#0d1f17',

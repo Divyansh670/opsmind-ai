@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,4 +70,47 @@ func (h *DashboardHandler) HandleFindingsForPR(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(findings)
+}
+
+// HandleDismissFinding handles POST /api/findings/{id}/dismiss
+func (h *DashboardHandler) HandleDismissFinding(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/findings/")
+	idStr := strings.TrimSuffix(path, "/dismiss")
+
+	findingID, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid finding id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Action string `json:"action"`
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if body.Action == "" {
+		body.Action = "DISMISSED"
+	}
+
+	ctx := r.Context()
+	if err := h.repo.DismissFinding(ctx, findingID, body.Action, body.Reason); err != nil {
+		log.Printf("ERROR: failed to dismiss finding %d: %v", findingID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("INFO: finding %d dismissed with action=%s", findingID, body.Action)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "dismissed"})
 }

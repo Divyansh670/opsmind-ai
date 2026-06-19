@@ -47,7 +47,10 @@ function App() {
         onSelectPR={setSelectedPR}
       />
 
-     <FindingDetails selectedPR={selectedPR} />
+     <FindingDetails
+  selectedPR={selectedPR}
+  onFindingDismissed={loadDashboard}
+/>
     </Layout>
   );
 }

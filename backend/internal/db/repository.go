@@ -87,6 +87,7 @@ func (r *Repository) InsertFinding(ctx context.Context, finding models.AgentFind
 	}
 	return nil
 }
+
 // PullRequestWithRepo is a PR joined with its repository name, used for dashboard display
 type PullRequestWithRepo struct {
 	models.PullRequest
@@ -198,4 +199,34 @@ func (r *Repository) GetDashboardMetrics(ctx context.Context) (criticalFlaws int
 	}
 
 	return criticalFlaws, costDrift, passRate, nil
+}
+
+// DismissFinding marks a finding as dismissed and logs the feedback
+func (r *Repository) DismissFinding(ctx context.Context, findingID int, action, reason string) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Mark finding as dismissed
+	_, err = tx.Exec(ctx, `
+		UPDATE agent_findings
+		SET dismissed = TRUE, dismiss_reason = $1
+		WHERE id = $2
+	`, reason, findingID)
+	if err != nil {
+		return fmt.Errorf("failed to dismiss finding: %w", err)
+	}
+
+	// Log to feedback_logs for MLOps retraining later
+	_, err = tx.Exec(ctx, `
+		INSERT INTO feedback_logs (finding_id, engineer_reason, action)
+		VALUES ($1, $2, $3)
+	`, findingID, reason, action)
+	if err != nil {
+		return fmt.Errorf("failed to insert feedback log: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }

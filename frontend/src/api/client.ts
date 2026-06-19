@@ -24,3 +24,13 @@ export async function fetchFindingsForPR(prId: number): Promise<AgentFinding[]> 
   const res = await apiClient.get(`/api/pull-requests/${prId}/findings`);
   return res.data;
 }
+export async function dismissFinding(
+  findingId: number,
+  action: 'DISMISSED' | 'APPROVED_EXCEPTION',
+  reason: string
+): Promise<void> {
+  await apiClient.post(`/api/findings/${findingId}/dismiss`, {
+    action,
+    reason,
+  });
+}

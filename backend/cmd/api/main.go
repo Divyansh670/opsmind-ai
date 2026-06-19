@@ -94,6 +94,7 @@ func main() {
 	mux.HandleFunc("/api/metrics", dashboardHandler.HandleMetrics)
 	mux.HandleFunc("/api/pull-requests", dashboardHandler.HandlePullRequests)
 	mux.HandleFunc("/api/pull-requests/", dashboardHandler.HandleFindingsForPR)
+	mux.HandleFunc("/api/findings/", dashboardHandler.HandleDismissFinding)
 	testHandler := webhook.NewTestTriggerHandler(jobQueue)
 	mux.HandleFunc("/test/trigger", testHandler.HandleTestTrigger)
 
