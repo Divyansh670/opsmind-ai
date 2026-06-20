@@ -30,9 +30,7 @@ func New(cfg Config) (*DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	dsn := "host=127.0.0.1 port=5434 user=opsmind_user password=opsmind_pass_dev dbname=opsmind_db sslmode=disable"
-
-	pool, err := pgxpool.Connect(ctx, dsn)
+	pool, err := pgxpool.Connect(ctx, cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)
 	}
