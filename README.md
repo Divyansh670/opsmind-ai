@@ -4,6 +4,12 @@ An autonomous, agentic code review system that intercepts GitHub Pull Requests
 and analyzes them for security vulnerabilities, cloud cost drift, and 
 architectural violations — before code reaches production.
 
+## 🚀 Live Demo
+- **Dashboard**: https://opsmind-frontend.onrender.com
+- **Backend API**: https://opsmind-backend-xqmc.onrender.com
+
+> Hosted on Render's free tier — the backend may take 30-60 seconds to wake up after periods of inactivity. The dashboard shows real findings from actual GitHub pull requests analyzed by the live AI agents.
+
 ## What It Does
 - 🔐 **Security Sentinel** — Scans diffs for hardcoded secrets, injection vectors, and CVEs
 - 💰 **Cost Predictor** — Detects cloud infrastructure cost drift from IaC changes
@@ -12,6 +18,8 @@ architectural violations — before code reaches production.
 - 📊 **Engineering Dashboard** — Live React UI showing posture metrics, PR audits, and detailed findings
 - 🔁 **MLOps Feedback Loop** — Engineers can dismiss false positives or approve exceptions, logged for future retraining
 - 🐳 **Fully Containerized** — Entire stack (DB + backend + frontend) runs via a single `docker compose up`
+- ☁️ **Live in Production** — Deployed free on Render, fully public, real GitHub integration
+- ⚙️ **CI Pipeline** — GitHub Actions automatically builds and validates backend, frontend, and Docker images on every push
 
 ## Stack
 | Layer | Technology |
@@ -20,14 +28,14 @@ architectural violations — before code reaches production.
 | Database | PostgreSQL 16 + pgvector |
 | AI/LLM | Groq API — Llama 3.3 70B |
 | Frontend | React + TypeScript (Vite), served via Nginx in production |
-| Infra | Docker, Docker Compose, ngrok (dev), GitHub Actions (planned) |
+| Infra | Docker, Docker Compose, Render (hosting), GitHub Actions (CI), ngrok (dev) |
 
 ## Current Build Status
 ✅ Project structure and Git repository  
 ✅ PostgreSQL + pgvector running in Docker  
 ✅ Database schema — 5 tables (repositories, pull_requests, agent_findings, feedback_logs, architecture_rules)  
 ✅ Go backend with concurrent HTTP server and graceful shutdown  
-✅ Environment-based config management (local + Docker networking)  
+✅ Environment-based config management (local, Docker, and Render-compatible)  
 ✅ PostgreSQL connection pool (pgx)  
 ✅ GitHub webhook handler with HMAC-SHA256 signature validation  
 ✅ Database models and structs for all entities  
@@ -48,9 +56,11 @@ architectural violations — before code reaches production.
 ✅ Auto-refresh polling — dashboard updates every 30s with manual refresh option  
 ✅ Multi-stage Dockerfiles for backend (Go/Alpine) and frontend (Node build → Nginx)  
 ✅ Full stack containerized via Docker Compose (Postgres + backend + frontend)  
-✅ **Verified end-to-end on a real GitHub repository — both local dev and fully Dockerized**  
+✅ GitHub Actions CI pipeline — builds backend, frontend, and validates both Dockerfiles on every push  
+✅ **Deployed live on Render** — managed PostgreSQL, Dockerized Go backend, static React frontend  
+✅ **Verified end-to-end on a real GitHub repository — local dev, fully Dockerized, and live in production**  
 ⏳ pgvector-based architecture rule embeddings  
-⏳ CI/CD pipeline and free-tier cloud deployment  
+⏳ Custom domain + always-on hosting (currently free-tier with cold starts)
 
 ## Architecture
 ```
@@ -75,7 +85,16 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
                                               feedback_logs (MLOps loop)
 ```
 
-## Running with Docker (recommended)
+## Deployment (Render)
+
+The production stack runs on Render's free tier:
+- **PostgreSQL** — managed database with pgvector extension enabled
+- **Backend** — Dockerized Go service, auto-deploys from `main` on every push
+- **Frontend** — static site built from `frontend/`, auto-deploys from `main` on every push
+
+Environment variables (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_PASSWORD`, `DB_SSL_MODE=require`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `GROQ_API_KEY`, `VITE_API_BASE_URL`) are configured directly in the Render dashboard per service. The backend reads Render's dynamically assigned `PORT` variable automatically, falling back to `SERVER_PORT`/`8080` for local and Docker environments.
+
+## Running with Docker (recommended for local dev)
 
 ### Prerequisites
 - Docker Desktop
@@ -164,9 +183,21 @@ GROQ_API_KEY=your_groq_key_here
 | `/api/pull-requests/{id}/findings` | GET | All agent findings for a specific PR |
 | `/api/findings/{id}/dismiss` | POST | Dismiss a finding as false positive or approved exception |
 
+## CI Pipeline
+
+Every push to `main` (and every pull request) triggers `.github/workflows/ci.yml`, which:
+1. Builds and `go vet`'s the backend on a clean Go 1.24 environment
+2. Type-checks and builds the frontend with Node 22
+3. Validates both Dockerfiles actually build successfully
+
+Runs entirely on GitHub's free Actions runners.
+
 ## Project Structure
 ```
 opsmind-ai/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                        # GitHub Actions CI pipeline
 ├── backend/
 │   ├── cmd/api/
 │   │   └── main.go                       # Entry point, router, graceful shutdown
@@ -175,7 +206,7 @@ opsmind-ai/
 │   │   │   ├── dashboard_handler.go      # Metrics, PR list, findings, dismiss endpoints
 │   │   │   └── cors.go                   # Multi-origin CORS middleware
 │   │   ├── config/
-│   │   │   └── config.go                 # Environment config management
+│   │   │   └── config.go                 # Environment config (supports Render's PORT)
 │   │   ├── db/
 │   │   │   ├── postgres.go               # PostgreSQL connection pool (env-driven DSN)
 │   │   │   └── repository.go             # All DB read/write operations
@@ -198,7 +229,7 @@ opsmind-ai/
 ├── frontend/
 │   ├── src/
 │   │   ├── api/
-│   │   │   └── client.ts                 # Axios client for backend API
+│   │   │   └── client.ts                 # Axios client (60s timeout for cold starts)
 │   │   ├── components/
 │   │   │   ├── Layout.tsx                # Header/nav shell
 │   │   │   ├── MetricsGrid.tsx           # 3 top-level metric cards
@@ -221,6 +252,7 @@ opsmind-ai/
 ```
 
 ## Status
-🚧 Core AI review engine, live dashboard, MLOps feedback loop, and full containerization 
-are all complete and verified end-to-end on a real GitHub repository — both in local dev 
-and as a fully Dockerized stack. Next up: CI/CD pipeline and free-tier cloud deployment.
+🟢 **Live in production.** Core AI review engine, dashboard, MLOps feedback loop, full 
+containerization, CI pipeline, and free-tier cloud deployment are all complete and verified 
+end-to-end on a real GitHub repository — in local dev, fully Dockerized, and live on the 
+public internet at the links above.
