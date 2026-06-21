@@ -10,6 +10,8 @@ architectural violations — before code reaches production.
 - 🏗️ **Architecture Supervisor** — Validates code against architectural best practices
 - 💬 **Automated PR Comments** — Posts findings directly to GitHub pull requests
 - 📊 **Engineering Dashboard** — Live React UI showing posture metrics, PR audits, and detailed findings
+- 🔁 **MLOps Feedback Loop** — Engineers can dismiss false positives or approve exceptions, logged for future retraining
+- 🐳 **Fully Containerized** — Entire stack (DB + backend + frontend) runs via a single `docker compose up`
 
 ## Stack
 | Layer | Technology |
@@ -17,15 +19,15 @@ architectural violations — before code reaches production.
 | Backend | Go (Golang) |
 | Database | PostgreSQL 16 + pgvector |
 | AI/LLM | Groq API — Llama 3.3 70B |
-| Frontend | React + TypeScript (Vite) |
-| Infra | Docker, ngrok (dev), GitHub Actions (planned) |
+| Frontend | React + TypeScript (Vite), served via Nginx in production |
+| Infra | Docker, Docker Compose, ngrok (dev), GitHub Actions (planned) |
 
 ## Current Build Status
 ✅ Project structure and Git repository  
 ✅ PostgreSQL + pgvector running in Docker  
 ✅ Database schema — 5 tables (repositories, pull_requests, agent_findings, feedback_logs, architecture_rules)  
 ✅ Go backend with concurrent HTTP server and graceful shutdown  
-✅ Environment-based config management  
+✅ Environment-based config management (local + Docker networking)  
 ✅ PostgreSQL connection pool (pgx)  
 ✅ GitHub webhook handler with HMAC-SHA256 signature validation  
 ✅ Database models and structs for all entities  
@@ -38,14 +40,17 @@ architectural violations — before code reaches production.
 ✅ All 3 agents run concurrently per PR and findings persist to PostgreSQL  
 ✅ Real diff fetching from GitHub API  
 ✅ Automated Markdown comment posting back to GitHub PRs  
-✅ **Verified end-to-end on a real GitHub repository with a real pull request**  
-✅ Dashboard REST API — metrics, PR list, per-PR findings (with CORS)  
+✅ Dashboard REST API — metrics, PR list, per-PR findings (with multi-origin CORS)  
 ✅ React dashboard — live MetricsGrid (critical flaws, cost drift, pass rate)  
 ✅ React dashboard — PullRequestTable with status/score badges, row selection  
 ✅ React dashboard — FindingDetails panel with severity, file/line, remediation  
-⏳ MLOps feedback loop (dismiss/approve exceptions)  
+✅ MLOps feedback loop — dismiss/approve exception buttons, logged to `feedback_logs`  
+✅ Auto-refresh polling — dashboard updates every 30s with manual refresh option  
+✅ Multi-stage Dockerfiles for backend (Go/Alpine) and frontend (Node build → Nginx)  
+✅ Full stack containerized via Docker Compose (Postgres + backend + frontend)  
+✅ **Verified end-to-end on a real GitHub repository — both local dev and fully Dockerized**  
 ⏳ pgvector-based architecture rule embeddings  
-⏳ CI/CD pipeline and free-tier deployment  
+⏳ CI/CD pipeline and free-tier cloud deployment  
 
 ## Architecture
 ```
@@ -64,23 +69,52 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
                     ┌───────────────────┴───────────────────┐
                     ▼                                       ▼
           GitHub PR Comment (Markdown)          React Dashboard (REST API)
+                                                              ↓
+                                        Engineer dismisses/approves findings
+                                                              ↓
+                                              feedback_logs (MLOps loop)
 ```
 
-## Local Development
+## Running with Docker (recommended)
 
 ### Prerequisites
-- Go 1.22+
 - Docker Desktop
+- ngrok (for local webhook testing)
+
+### Setup
+```bash
+cd infra
+
+# Fill in real secrets in .env.docker (gitignored)
+# GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GROQ_API_KEY
+
+docker compose --env-file .env.docker up -d
+
+# Run migrations (first time only)
+Get-Content migrations/001_init_schema.sql | docker exec -i opsmind-postgres psql -U opsmind_user -d opsmind_db
+
+# Expose backend for GitHub webhooks (separate terminal)
+ngrok http 8080
+```
+
+Dashboard: `http://localhost:3000`  
+Backend API: `http://localhost:8080`
+
+## Running Locally (without Docker)
+
+### Prerequisites
+- Go 1.24+
+- Docker Desktop (for Postgres only)
 - Node.js 22+ (LTS)
 - ngrok (for local webhook testing)
 
 ### Setup
 ```bash
-# Start PostgreSQL
-cd infra && docker compose up -d
+# Start PostgreSQL only
+cd infra && docker compose up -d postgres
 
 # Run migrations
-Get-Content infra/migrations/001_init_schema.sql | docker exec -i opsmind-postgres psql -U opsmind_user -d opsmind_db
+Get-Content migrations/001_init_schema.sql | docker exec -i opsmind-postgres psql -U opsmind_user -d opsmind_db
 
 # Start backend
 cd backend && go run cmd/api/main.go
@@ -96,7 +130,7 @@ Dashboard: `http://localhost:5173`
 Backend API: `http://localhost:8080`
 
 ### Environment Variables
-Create `backend/.env`:
+Create `backend/.env` for local dev:
 ```
 SERVER_PORT=8080
 DB_HOST=localhost
@@ -112,6 +146,13 @@ GROQ_MODEL_ID=llama-3.3-70b-versatile
 MAX_WORKERS=5
 ```
 
+Create `infra/.env.docker` for the containerized stack (gitignored):
+```
+GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
+GITHUB_TOKEN=your_github_pat_here
+GROQ_API_KEY=your_groq_key_here
+```
+
 ### Endpoints
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -121,6 +162,7 @@ MAX_WORKERS=5
 | `/api/metrics` | GET | Dashboard top-level metrics (critical flaws, cost drift, pass rate) |
 | `/api/pull-requests` | GET | List of all analyzed PRs |
 | `/api/pull-requests/{id}/findings` | GET | All agent findings for a specific PR |
+| `/api/findings/{id}/dismiss` | POST | Dismiss a finding as false positive or approved exception |
 
 ## Project Structure
 ```
@@ -130,12 +172,12 @@ opsmind-ai/
 │   │   └── main.go                       # Entry point, router, graceful shutdown
 │   ├── internal/
 │   │   ├── api/
-│   │   │   ├── dashboard_handler.go      # Metrics, PR list, findings endpoints
-│   │   │   └── cors.go                   # CORS middleware for React dev server
+│   │   │   ├── dashboard_handler.go      # Metrics, PR list, findings, dismiss endpoints
+│   │   │   └── cors.go                   # Multi-origin CORS middleware
 │   │   ├── config/
 │   │   │   └── config.go                 # Environment config management
 │   │   ├── db/
-│   │   │   ├── postgres.go               # PostgreSQL connection pool
+│   │   │   ├── postgres.go               # PostgreSQL connection pool (env-driven DSN)
 │   │   │   └── repository.go             # All DB read/write operations
 │   │   ├── models/
 │   │   │   └── structures.go             # All entity structs and constants
@@ -150,6 +192,7 @@ opsmind-ai/
 │   │       ├── cost_predictor.go         # Cost agent
 │   │       ├── architecture_supervisor.go # Architecture agent
 │   │       └── comment_formatter.go      # Markdown comment builder
+│   ├── Dockerfile                        # Multi-stage Go build → Alpine runtime
 │   ├── go.mod
 │   └── .env                              # Local secrets (gitignored)
 ├── frontend/
@@ -160,19 +203,24 @@ opsmind-ai/
 │   │   │   ├── Layout.tsx                # Header/nav shell
 │   │   │   ├── MetricsGrid.tsx           # 3 top-level metric cards
 │   │   │   ├── PullRequestTable.tsx      # PR list with badges
-│   │   │   └── FindingDetails.tsx        # Per-PR findings panel
+│   │   │   └── FindingDetails.tsx        # Per-PR findings panel with dismiss actions
+│   │   ├── hooks/
+│   │   │   └── useAuditStream.ts         # Auto-refresh polling hook
 │   │   ├── types/
 │   │   │   └── api.ts                    # TypeScript types mirroring Go models
 │   │   └── App.tsx                       # Dashboard page composition
+│   ├── Dockerfile                        # Multi-stage Node build → Nginx runtime
+│   ├── nginx.conf                        # SPA routing + API reverse proxy
 │   └── package.json
 ├── infra/
-│   ├── docker-compose.yml                # PostgreSQL + pgvector container
+│   ├── docker-compose.yml                # Full stack: Postgres + backend + frontend
+│   ├── .env.docker                       # Docker stack secrets (gitignored)
 │   └── migrations/
 │       └── 001_init_schema.sql           # Full database schema
 └── docs/                                 # Architecture docs (coming soon)
 ```
 
 ## Status
-🚧 Core AI review engine and live dashboard are fully functional, verified end-to-end 
-on a real GitHub repository. Now building the MLOps feedback loop (dismiss/approve 
-exceptions) and preparing for free-tier deployment.
+🚧 Core AI review engine, live dashboard, MLOps feedback loop, and full containerization 
+are all complete and verified end-to-end on a real GitHub repository — both in local dev 
+and as a fully Dockerized stack. Next up: CI/CD pipeline and free-tier cloud deployment.
