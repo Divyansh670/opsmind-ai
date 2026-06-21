@@ -28,7 +28,7 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		ServerPort:          getEnv("SERVER_PORT", "8080"),
+		ServerPort:          getEnv("PORT", getEnv("SERVER_PORT", "8080")),
 		DBHost:              getEnv("DB_HOST", "localhost"),
 		DBPort:              getEnv("DB_PORT", "5433"),
 		DBUser:              getEnv("DB_USER", "opsmind_user"),
