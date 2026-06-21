@@ -4,8 +4,9 @@ import "net/http"
 
 // allowedOrigins lists every frontend origin permitted to call this API
 var allowedOrigins = map[string]bool{
-	"http://localhost:5173": true, // Vite dev server
-	"http://localhost:3000": true, // Dockerized frontend (Nginx)
+	"http://localhost:5173":                 true, // Vite dev server
+	"http://localhost:3000":                 true, // Dockerized frontend (Nginx)
+	"https://opsmind-frontend.onrender.com": true, // Production frontend (Render)
 }
 
 // CORSMiddleware allows known frontend origins to call our API
