@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
+	"github.com/pgvector/pgvector-go"
 )
 
 // Repository handles all database read/write operations
@@ -229,4 +230,86 @@ func (r *Repository) DismissFinding(ctx context.Context, findingID int, action, 
 	}
 
 	return tx.Commit(ctx)
+}
+
+// ArchitectureRuleInput is what's needed to create a new rule
+type ArchitectureRuleInput struct {
+	RuleText  string
+	Embedding []float32
+}
+
+// ArchitectureRule represents a stored rule with its embedding
+type ArchitectureRule struct {
+	ID        int    `json:"id"`
+	RuleText  string `json:"rule_text"`
+	CreatedAt string `json:"created_at"`
+}
+
+// CreateArchitectureRule inserts a new rule with its embedding
+func (r *Repository) CreateArchitectureRule(ctx context.Context, input ArchitectureRuleInput) (int, error) {
+	var id int
+	vec := pgvector.NewVector(input.Embedding)
+	err := r.db.Pool.QueryRow(ctx, `
+		INSERT INTO architecture_rules (rule_text, embedding)
+		VALUES ($1, $2)
+		RETURNING id
+	`, input.RuleText, vec).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create architecture rule: %w", err)
+	}
+	return id, nil
+}
+
+// GetAllArchitectureRules returns all rules (without embeddings, for display)
+func (r *Repository) GetAllArchitectureRules(ctx context.Context) ([]ArchitectureRule, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT id, rule_text, created_at FROM architecture_rules ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch architecture rules: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []ArchitectureRule
+	for rows.Next() {
+		var rule ArchitectureRule
+		if err := rows.Scan(&rule.ID, &rule.RuleText, &rule.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan architecture rule: %w", err)
+		}
+		rules = append(rules, rule)
+	}
+	return rules, nil
+}
+
+// DeleteArchitectureRule removes a rule
+func (r *Repository) DeleteArchitectureRule(ctx context.Context, id int) error {
+	_, err := r.db.Pool.Exec(ctx, `DELETE FROM architecture_rules WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete architecture rule: %w", err)
+	}
+	return nil
+}
+
+// FindRelevantRules uses pgvector cosine similarity to find rules most relevant to a diff
+func (r *Repository) FindRelevantRules(ctx context.Context, diffEmbedding []float32, limit int) ([]string, error) {
+	vec := pgvector.NewVector(diffEmbedding)
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT rule_text FROM architecture_rules
+		ORDER BY embedding <=> $1
+		LIMIT $2
+	`, vec, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find relevant rules: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []string
+	for rows.Next() {
+		var rule string
+		if err := rows.Scan(&rule); err != nil {
+			return nil, fmt.Errorf("failed to scan relevant rule: %w", err)
+		}
+		rules = append(rules, rule)
+	}
+	return rules, nil
 }

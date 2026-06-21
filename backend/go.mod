@@ -1,10 +1,11 @@
 module github.com/Divyansh670/opsmind-ai/backend
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/jackc/pgx/v4 v4.18.3
 	github.com/joho/godotenv v1.5.1
+	github.com/pgvector/pgvector-go v0.4.0
 )
 
 require (
