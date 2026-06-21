@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
 )
@@ -11,6 +13,8 @@ import (
 // TestTriggerHandler manually injects a fake PR job into the queue for testing
 type TestTriggerHandler struct {
 	JobQueue chan models.WebhookPayload
+	mu       sync.Mutex
+	lastHit  time.Time
 }
 
 // NewTestTriggerHandler creates a new test trigger handler
@@ -18,9 +22,23 @@ func NewTestTriggerHandler(jobQueue chan models.WebhookPayload) *TestTriggerHand
 	return &TestTriggerHandler{JobQueue: jobQueue}
 }
 
+const testTriggerCooldown = 30 * time.Second
+
 // HandleTestTrigger creates a fake PR payload with a known-vulnerable code snippet
 // and pushes it into the job queue so we can verify the full agent pipeline works.
 func (h *TestTriggerHandler) HandleTestTrigger(w http.ResponseWriter, r *http.Request) {
+	h.mu.Lock()
+	if time.Since(h.lastHit) < testTriggerCooldown {
+		remaining := testTriggerCooldown - time.Since(h.lastHit)
+		h.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprintf(w, `{"error":"rate limited, try again in %.0f seconds"}`, remaining.Seconds())
+		return
+	}
+	h.lastHit = time.Now()
+	h.mu.Unlock()
+
 	vulnerableDiff := `
 --- a/internal/auth/jwt.go
 +++ b/internal/auth/jwt.go
