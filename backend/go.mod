@@ -1,6 +1,6 @@
 module github.com/Divyansh670/opsmind-ai/backend
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/jackc/pgx/v4 v4.18.3
