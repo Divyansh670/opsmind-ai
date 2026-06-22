@@ -48,12 +48,12 @@ type embedResponse struct {
 // Embed converts a piece of text into a 768-dimension vector embedding
 func (c *GeminiClient) Embed(ctx context.Context, text string) ([]float32, error) {
 	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=%s",
+		"https://generativelanguage.googleapis.com/v1/models/embedding-001:embedContent?key=%s",
 		c.APIKey,
 	)
 
 	reqBody := embedRequest{
-		Model: "models/text-embedding-004",
+		Model: "models/embedding-001",
 		Content: embedContent{
 			Parts: []embedPart{{Text: text}},
 		},
