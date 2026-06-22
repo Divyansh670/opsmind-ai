@@ -22,10 +22,11 @@ type WorkerPool struct {
 	architectureAgent *ArchitectureSupervisorAgent
 	repo              *db.Repository
 	githubClient      *GitHubClient
+	geminiClient      *GeminiClient
 }
 
 // NewWorkerPool creates a new worker pool
-func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqClient *GroqClient, repo *db.Repository, githubClient *GitHubClient) *WorkerPool {
+func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqClient *GroqClient, geminiClient *GeminiClient, repo *db.Repository, githubClient *GitHubClient) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
 		jobChannel:        jobChannel,
@@ -34,9 +35,10 @@ func NewWorkerPool(maxWorkers int, jobChannel chan models.WebhookPayload, groqCl
 		cancel:            cancel,
 		securityAgent:     NewSecuritySentinelAgent(groqClient),
 		costAgent:         NewCostPredictorAgent(groqClient),
-		architectureAgent: NewArchitectureSupervisorAgent(groqClient),
+		architectureAgent: NewArchitectureSupervisorAgent(groqClient, geminiClient, repo),
 		repo:              repo,
 		githubClient:      githubClient,
+		geminiClient:      geminiClient,
 	}
 }
 

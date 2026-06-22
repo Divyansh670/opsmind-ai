@@ -18,6 +18,7 @@ type Config struct {
 	GitHubToken         string
 	GroqAPIKey          string
 	GroqModelID         string
+	GeminiAPIKey        string
 	MaxWorkers          int
 }
 
@@ -40,6 +41,7 @@ func Load() (*Config, error) {
 		GroqAPIKey:          getEnv("GROQ_API_KEY", ""),
 		GroqModelID:         getEnv("GROQ_MODEL_ID", "llama-3.3-70b-versatile"),
 		MaxWorkers:          maxWorkers,
+		GeminiAPIKey:        getEnv("GEMINI_API_KEY", ""),
 	}
 
 	if err := cfg.validate(); err != nil {

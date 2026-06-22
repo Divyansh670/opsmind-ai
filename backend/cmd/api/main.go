@@ -57,8 +57,9 @@ func main() {
 	// Start worker pool
 	groqClient := agents.NewGroqClient(cfg.GroqAPIKey, cfg.GroqModelID)
 	githubClient := agents.NewGitHubClient(cfg.GitHubToken)
+	geminiClient := agents.NewGeminiClient(cfg.GeminiAPIKey)
 	repo := db.NewRepository(database)
-	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue, groqClient, repo, githubClient)
+	pool := agents.NewWorkerPool(cfg.MaxWorkers, jobQueue, groqClient, geminiClient, repo, githubClient)
 	pool.Start()
 	defer pool.Stop()
 	// Set up HTTP router
@@ -90,11 +91,20 @@ func main() {
 	// GitHub webhook endpoint
 	mux.HandleFunc("/webhook/github", webhookHandler.HandleWebhook)
 	// Dashboard API endpoints
-	dashboardHandler := api.NewDashboardHandler(repo)
+	dashboardHandler := api.NewDashboardHandler(repo, geminiClient)
 	mux.HandleFunc("/api/metrics", dashboardHandler.HandleMetrics)
 	mux.HandleFunc("/api/pull-requests", dashboardHandler.HandlePullRequests)
 	mux.HandleFunc("/api/pull-requests/", dashboardHandler.HandleFindingsForPR)
 	mux.HandleFunc("/api/findings/", dashboardHandler.HandleDismissFinding)
+	mux.HandleFunc("/api/findings/", dashboardHandler.HandleDismissFinding)
+	mux.HandleFunc("/api/rules", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			dashboardHandler.HandleCreateRule(w, r)
+		} else {
+			dashboardHandler.HandleGetRules(w, r)
+		}
+	})
+	mux.HandleFunc("/api/rules/", dashboardHandler.HandleDeleteRule)
 	testHandler := webhook.NewTestTriggerHandler(jobQueue)
 	mux.HandleFunc("/test/trigger", testHandler.HandleTestTrigger)
 

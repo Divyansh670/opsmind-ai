@@ -7,17 +7,18 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Divyansh670/opsmind-ai/backend/internal/agents"
 	"github.com/Divyansh670/opsmind-ai/backend/internal/db"
 )
 
 // DashboardHandler serves dashboard-related read endpoints
 type DashboardHandler struct {
-	repo *db.Repository
+	repo         *db.Repository
+	geminiClient *agents.GeminiClient
 }
 
-// NewDashboardHandler creates a new dashboard handler
-func NewDashboardHandler(repo *db.Repository) *DashboardHandler {
-	return &DashboardHandler{repo: repo}
+func NewDashboardHandler(repo *db.Repository, geminiClient *agents.GeminiClient) *DashboardHandler {
+	return &DashboardHandler{repo: repo, geminiClient: geminiClient}
 }
 
 // HandleMetrics returns the 3 top-level dashboard metrics
@@ -113,4 +114,74 @@ func (h *DashboardHandler) HandleDismissFinding(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "dismissed"})
+}
+
+// HandleGetRules returns all architecture rules
+func (h *DashboardHandler) HandleGetRules(w http.ResponseWriter, r *http.Request) {
+	rules, err := h.repo.GetAllArchitectureRules(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rules)
+}
+
+// HandleCreateRule creates a new architecture rule with embedding
+func (h *DashboardHandler) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		RuleText string `json:"rule_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RuleText == "" {
+		http.Error(w, "rule_text is required", http.StatusBadRequest)
+		return
+	}
+
+	embedding, err := h.geminiClient.Embed(r.Context(), body.RuleText)
+	if err != nil {
+		log.Printf("ERROR: failed to embed rule: %v", err)
+		http.Error(w, "failed to generate embedding", http.StatusInternalServerError)
+		return
+	}
+
+	id, err := h.repo.CreateArchitectureRule(r.Context(), db.ArchitectureRuleInput{
+		RuleText:  body.RuleText,
+		Embedding: embedding,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"id": id, "rule_text": body.RuleText})
+}
+
+// HandleDeleteRule deletes an architecture rule by ID
+func (h *DashboardHandler) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/rules/")
+	id, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "invalid rule id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.repo.DeleteArchitectureRule(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
