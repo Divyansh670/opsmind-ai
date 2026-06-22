@@ -1,11 +1,15 @@
 import type { ReactNode } from 'react';
 import { LayoutDashboard, GitBranch, Settings, Bot } from 'lucide-react';
 
+type Page = 'dashboard' | 'settings';
+
 interface LayoutProps {
   children: ReactNode;
+  currentPage: Page;
+  onNavigate: (page: Page) => void;
 }
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout({ children, currentPage, onNavigate }: LayoutProps) {
   return (
     <div style={styles.page}>
       <header style={styles.header}>
@@ -15,18 +19,27 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <nav style={styles.nav}>
-          <a href="#" style={styles.navItemActive}>
+          <button
+            style={currentPage === 'dashboard' ? styles.navItemActive : styles.navItem}
+            onClick={() => onNavigate('dashboard')}
+          >
             <LayoutDashboard size={16} />
             Dashboard
-          </a>
-          <a href="#" style={styles.navItem}>
+          </button>
+          <button
+            style={styles.navItem}
+            onClick={() => {}}
+          >
             <GitBranch size={16} />
             Repositories
-          </a>
-          <a href="#" style={styles.navItem}>
+          </button>
+          <button
+            style={currentPage === 'settings' ? styles.navItemActive : styles.navItem}
+            onClick={() => onNavigate('settings')}
+          >
             <Settings size={16} />
             Settings
-          </a>
+          </button>
         </nav>
 
         <div style={styles.userBadge}>User: Admin</div>
@@ -71,17 +84,23 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     gap: 6,
     color: '#9ca3af',
-    textDecoration: 'none',
+    background: 'none',
+    border: 'none',
     fontSize: 14,
+    cursor: 'pointer',
+    padding: 0,
   },
   navItemActive: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
     color: '#60a5fa',
-    textDecoration: 'none',
+    background: 'none',
+    border: 'none',
     fontSize: 14,
     fontWeight: 600,
+    cursor: 'pointer',
+    padding: 0,
   },
   userBadge: {
     fontSize: 13,
