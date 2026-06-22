@@ -96,7 +96,6 @@ func main() {
 	mux.HandleFunc("/api/pull-requests", dashboardHandler.HandlePullRequests)
 	mux.HandleFunc("/api/pull-requests/", dashboardHandler.HandleFindingsForPR)
 	mux.HandleFunc("/api/findings/", dashboardHandler.HandleDismissFinding)
-	mux.HandleFunc("/api/findings/", dashboardHandler.HandleDismissFinding)
 	mux.HandleFunc("/api/rules", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			dashboardHandler.HandleCreateRule(w, r)
