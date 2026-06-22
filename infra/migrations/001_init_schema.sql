@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS feedback_logs (
 CREATE TABLE IF NOT EXISTS architecture_rules (
     id         SERIAL PRIMARY KEY,
     rule_text  TEXT NOT NULL,
-    embedding  vector(768),
+    embedding  vector(3072),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
