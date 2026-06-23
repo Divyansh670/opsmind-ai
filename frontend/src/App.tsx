@@ -21,47 +21,51 @@ function App() {
   }
 
   return (
-    <Layout currentPage={page} onNavigate={setPage}>
-      {page === 'dashboard' && (
-        <>
-          <div style={styles.pageHeader}>
-            <h1 style={styles.pageTitle}>SYSTEM OVERVIEW (GLOBAL POSTURE)</h1>
-            <div style={styles.lastUpdated}>
-              {lastUpdated && (
-                <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
-              )}
-              <button style={styles.refreshBtn} onClick={refresh}>
-                ↻ Refresh
-              </button>
+    <Layout currentPage={page} onNavigate={(p) => { setSelectedPR(null); setPage(p); }}>
+      <div
+        key={page}
+        style={{ animation: 'fadeIn 200ms ease' }}
+      >
+        {page === 'dashboard' && (
+          <>
+            <div style={styles.pageHeader}>
+              <h1 style={styles.pageTitle}>SYSTEM OVERVIEW (GLOBAL POSTURE)</h1>
+              <div style={styles.lastUpdated}>
+                {lastUpdated && (
+                  <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+                )}
+                <button style={styles.refreshBtn} onClick={refresh}>
+                  ↻ Refresh
+                </button>
+              </div>
             </div>
-          </div>
 
-          <MetricsGrid metrics={metrics} loading={loading} />
-          <TrendCharts />
+            <MetricsGrid metrics={metrics} loading={loading} />
+            <TrendCharts />
+            <PullRequestTable
+              pullRequests={pullRequests}
+              loading={loading}
+              selectedPRId={selectedPR?.id ?? null}
+              onSelectPR={setSelectedPR}
+            />
+            <FindingDetails
+              selectedPR={selectedPR}
+              onFindingDismissed={handleFindingDismissed}
+            />
+          </>
+        )}
 
-          <PullRequestTable
-            pullRequests={pullRequests}
-            loading={loading}
-            selectedPRId={selectedPR?.id ?? null}
-            onSelectPR={setSelectedPR}
-          />
+        {page === 'repositories' && <RepositoriesPage />}
 
-          <FindingDetails
-            selectedPR={selectedPR}
-            onFindingDismissed={handleFindingDismissed}
-          />
-        </>
-      )}
-      
-      {page === 'repositories' && <RepositoriesPage />}
-      {page === 'settings' && (
-        <>
-          <div style={styles.pageHeader}>
-            <h1 style={styles.pageTitle}>SETTINGS</h1>
-          </div>
-          <RulesManager />
-        </>
-      )}
+        {page === 'settings' && (
+          <>
+            <div style={styles.pageHeader}>
+              <h1 style={styles.pageTitle}>SETTINGS</h1>
+            </div>
+            <RulesManager />
+          </>
+        )}
+      </div>
     </Layout>
   );
 }

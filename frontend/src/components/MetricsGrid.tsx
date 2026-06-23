@@ -7,6 +7,19 @@ interface MetricsGridProps {
 }
 
 export default function MetricsGrid({ metrics, loading }: MetricsGridProps) {
+  if (loading) {
+    return (
+      <div style={styles.grid}>
+        {[1, 2, 3].map(i => (
+          <div key={i} style={styles.card}>
+            <div className="skeleton" style={{ height: 14, width: 120, marginBottom: 16 }} />
+            <div className="skeleton" style={{ height: 28, width: 80 }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div style={styles.grid}>
       <MetricCard

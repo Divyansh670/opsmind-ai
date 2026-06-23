@@ -46,10 +46,11 @@ export default function PullRequestTable({
             <tr
               key={pr.id}
               onClick={() => onSelectPR(pr)}
-              style={{
-                ...styles.row,
-                backgroundColor: selectedPRId === pr.id ? '#1a1d29' : 'transparent',
-              }}
+             className="pr-row"
+style={{
+  ...styles.row,
+  backgroundColor: selectedPRId === pr.id ? '#1a1d29' : 'transparent',
+}}
             >
               <td style={styles.td}>#{pr.pr_number}</td>
               <td style={styles.td}>{pr.repo_name}</td>

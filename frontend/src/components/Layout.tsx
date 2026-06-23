@@ -20,6 +20,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
 
         <nav style={styles.nav}>
           <button
+          className="nav-btn"
             style={currentPage === 'dashboard' ? styles.navItemActive : styles.navItem}
             onClick={() => onNavigate('dashboard')}
           >
@@ -27,6 +28,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             Dashboard
           </button>
           <button
+          className="nav-btn"
             style={currentPage === 'repositories' ? styles.navItemActive : styles.navItem}
             onClick={() => onNavigate('repositories')}
           >
@@ -34,6 +36,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             Repositories
           </button>
           <button
+          className="nav-btn"
             style={currentPage === 'settings' ? styles.navItemActive : styles.navItem}
             onClick={() => onNavigate('settings')}
           >
