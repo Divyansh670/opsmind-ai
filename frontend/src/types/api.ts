@@ -46,3 +46,13 @@ export interface PRTrendPoint {
   status: string;
   pr_number: number;
 }
+export interface RepoStats {
+  id: number;
+  repo_name: string;
+  total_prs: number;
+  flagged_prs: number;
+  approved_prs: number;
+  avg_security_score: number;
+  total_cost_drift_usd: number;
+  last_updated: string;
+}

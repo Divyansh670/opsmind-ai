@@ -352,3 +352,51 @@ func (r *Repository) GetPRTrend(ctx context.Context) ([]PRTrendPoint, error) {
 	}
 	return points, nil
 }
+
+// RepoStats represents a repository with aggregated PR statistics
+type RepoStats struct {
+	ID          int     `json:"id"`
+	RepoName    string  `json:"repo_name"`
+	TotalPRs    int     `json:"total_prs"`
+	FlaggedPRs  int     `json:"flagged_prs"`
+	ApprovedPRs int     `json:"approved_prs"`
+	AvgScore    float64 `json:"avg_security_score"`
+	TotalDrift  float64 `json:"total_cost_drift_usd"`
+	LastUpdated string  `json:"last_updated"`
+}
+
+// GetRepoStats returns all repositories with aggregated statistics
+func (r *Repository) GetRepoStats(ctx context.Context) ([]RepoStats, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			repo.id,
+			repo.repo_name,
+			COUNT(pr.id) as total_prs,
+			COUNT(CASE WHEN pr.status = 'FLAGGED' THEN 1 END) as flagged_prs,
+			COUNT(CASE WHEN pr.status = 'APPROVED' THEN 1 END) as approved_prs,
+			COALESCE(AVG(pr.security_score), 0) as avg_security_score,
+			COALESCE(SUM(pr.cost_drift_usd), 0) as total_cost_drift_usd,
+			TO_CHAR(MAX(pr.updated_at), 'Mon DD, YYYY') as last_updated
+		FROM repositories repo
+		LEFT JOIN pull_requests pr ON pr.repo_id = repo.id
+		GROUP BY repo.id, repo.repo_name
+		ORDER BY total_prs DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch repo stats: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []RepoStats
+	for rows.Next() {
+		var s RepoStats
+		if err := rows.Scan(
+			&s.ID, &s.RepoName, &s.TotalPRs, &s.FlaggedPRs, &s.ApprovedPRs,
+			&s.AvgScore, &s.TotalDrift, &s.LastUpdated,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan repo stats: %w", err)
+		}
+		stats = append(stats, s)
+	}
+	return stats, nil
+}

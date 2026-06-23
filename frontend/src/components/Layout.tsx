@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { LayoutDashboard, GitBranch, Settings, Bot } from 'lucide-react';
 
-type Page = 'dashboard' | 'settings';
+type Page = 'dashboard' | 'repositories' | 'settings';
 
 interface LayoutProps {
   children: ReactNode;
@@ -27,8 +27,8 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             Dashboard
           </button>
           <button
-            style={styles.navItem}
-            onClick={() => {}}
+            style={currentPage === 'repositories' ? styles.navItemActive : styles.navItem}
+            onClick={() => onNavigate('repositories')}
           >
             <GitBranch size={16} />
             Repositories

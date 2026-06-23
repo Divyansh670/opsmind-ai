@@ -6,9 +6,10 @@ import FindingDetails from './components/FindingDetails';
 import RulesManager from './components/RulesManager';
 import { useAuditStream } from './hooks/useAuditStream';
 import TrendCharts from './components/TrendCharts';
+import RepositoriesPage from './components/RepositoriesPage';
 import type { PullRequest } from './types/api';
 
-type Page = 'dashboard' | 'settings';
+type Page = 'dashboard' | 'repositories' | 'settings';
 
 function App() {
   const { metrics, pullRequests, loading, lastUpdated, refresh } = useAuditStream();
@@ -51,7 +52,8 @@ function App() {
           />
         </>
       )}
-
+      
+      {page === 'repositories' && <RepositoriesPage />}
       {page === 'settings' && (
         <>
           <div style={styles.pageHeader}>

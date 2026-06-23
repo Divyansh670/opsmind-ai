@@ -196,3 +196,14 @@ func (h *DashboardHandler) HandleTrend(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(points)
 }
+
+// HandleRepos returns repository stats
+func (h *DashboardHandler) HandleRepos(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.repo.GetRepoStats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}

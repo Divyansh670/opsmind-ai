@@ -105,6 +105,7 @@ func main() {
 	})
 	mux.HandleFunc("/api/rules/", dashboardHandler.HandleDeleteRule)
 	mux.HandleFunc("/api/trend", dashboardHandler.HandleTrend)
+	mux.HandleFunc("/api/repos", dashboardHandler.HandleRepos)
 	testHandler := webhook.NewTestTriggerHandler(jobQueue)
 	mux.HandleFunc("/test/trigger", testHandler.HandleTestTrigger)
 

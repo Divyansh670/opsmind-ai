@@ -40,3 +40,9 @@ export async function fetchTrend(): Promise<PRTrendPoint[]> {
   const res = await apiClient.get('/api/trend');
   return res.data ?? [];
 }
+import type { RepoStats } from '../types/api';
+
+export async function fetchRepos(): Promise<RepoStats[]> {
+  const res = await apiClient.get('/api/repos');
+  return res.data ?? [];
+}
