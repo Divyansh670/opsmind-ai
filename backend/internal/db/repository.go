@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Divyansh670/opsmind-ai/backend/internal/models"
 	"github.com/pgvector/pgvector-go"
@@ -240,9 +241,9 @@ type ArchitectureRuleInput struct {
 
 // ArchitectureRule represents a stored rule with its embedding
 type ArchitectureRule struct {
-	ID        int    `json:"id"`
-	RuleText  string `json:"rule_text"`
-	CreatedAt string `json:"created_at"`
+	ID        int       `json:"id"`
+	RuleText  string    `json:"rule_text"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // CreateArchitectureRule inserts a new rule with its embedding
