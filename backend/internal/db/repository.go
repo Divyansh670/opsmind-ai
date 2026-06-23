@@ -314,3 +314,41 @@ func (r *Repository) FindRelevantRules(ctx context.Context, diffEmbedding []floa
 	}
 	return rules, nil
 }
+
+// PRTrendPoint represents a single data point for trend charts
+type PRTrendPoint struct {
+	Date          string  `json:"date"`
+	SecurityScore int     `json:"security_score"`
+	CostDrift     float64 `json:"cost_drift_usd"`
+	Status        string  `json:"status"`
+	PRNumber      int     `json:"pr_number"`
+}
+
+// GetPRTrend returns the last 20 PRs ordered by date for trend charting
+func (r *Repository) GetPRTrend(ctx context.Context) ([]PRTrendPoint, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT 
+			TO_CHAR(pr.created_at, 'Mon DD') as date,
+			pr.security_score,
+			pr.cost_drift_usd,
+			pr.status,
+			pr.pr_number
+		FROM pull_requests pr
+		ORDER BY pr.created_at ASC
+		LIMIT 20
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch PR trend: %w", err)
+	}
+	defer rows.Close()
+
+	var points []PRTrendPoint
+	for rows.Next() {
+		var p PRTrendPoint
+		if err := rows.Scan(&p.Date, &p.SecurityScore, &p.CostDrift, &p.Status, &p.PRNumber); err != nil {
+			return nil, fmt.Errorf("failed to scan trend point: %w", err)
+		}
+		points = append(points, p)
+	}
+	return points, nil
+}

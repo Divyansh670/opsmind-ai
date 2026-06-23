@@ -34,3 +34,9 @@ export async function dismissFinding(
     reason,
   });
 }
+import type { PRTrendPoint } from '../types/api';
+
+export async function fetchTrend(): Promise<PRTrendPoint[]> {
+  const res = await apiClient.get('/api/trend');
+  return res.data ?? [];
+}

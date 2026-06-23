@@ -39,3 +39,10 @@ export interface DashboardMetrics {
   monthly_cost_drift: number;
   pipeline_pass_rate: number;
 }
+export interface PRTrendPoint {
+  date: string;
+  security_score: number;
+  cost_drift_usd: number;
+  status: string;
+  pr_number: number;
+}

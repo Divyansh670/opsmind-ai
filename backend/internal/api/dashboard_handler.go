@@ -185,3 +185,14 @@ func (h *DashboardHandler) HandleDeleteRule(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
+
+// HandleTrend returns PR trend data for charts
+func (h *DashboardHandler) HandleTrend(w http.ResponseWriter, r *http.Request) {
+	points, err := h.repo.GetPRTrend(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(points)
+}

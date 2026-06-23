@@ -5,6 +5,7 @@ import PullRequestTable from './components/PullRequestTable';
 import FindingDetails from './components/FindingDetails';
 import RulesManager from './components/RulesManager';
 import { useAuditStream } from './hooks/useAuditStream';
+import TrendCharts from './components/TrendCharts';
 import type { PullRequest } from './types/api';
 
 type Page = 'dashboard' | 'settings';
@@ -35,6 +36,7 @@ function App() {
           </div>
 
           <MetricsGrid metrics={metrics} loading={loading} />
+          <TrendCharts />
 
           <PullRequestTable
             pullRequests={pullRequests}
