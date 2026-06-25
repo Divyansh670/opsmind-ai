@@ -46,3 +46,21 @@ export async function fetchRepos(): Promise<RepoStats[]> {
   const res = await apiClient.get('/api/repos');
   return res.data ?? [];
 }
+export interface RAGSource {
+  type: string;
+  repo_name: string;
+  pr_number: number;
+  file_path: string;
+  severity: string;
+  snippet: string;
+}
+
+export interface RAGResponse {
+  answer: string;
+  sources: RAGSource[];
+}
+
+export async function askChat(question: string): Promise<RAGResponse> {
+  const res = await apiClient.post('/api/chat', { question });
+  return res.data;
+}

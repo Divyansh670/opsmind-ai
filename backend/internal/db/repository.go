@@ -400,3 +400,79 @@ func (r *Repository) GetRepoStats(ctx context.Context) ([]RepoStats, error) {
 	}
 	return stats, nil
 }
+
+// RAGContext represents a retrieved piece of context for the chatbot
+type RAGContext struct {
+	SourceType string  `json:"source_type"` // "finding", "rule", "pr"
+	Content    string  `json:"content"`
+	RepoName   string  `json:"repo_name"`
+	PRNumber   int     `json:"pr_number"`
+	Severity   string  `json:"severity"`
+	FilePath   string  `json:"file_path"`
+	Score      float64 `json:"score"`
+}
+
+// SearchRAGContext finds the most relevant findings and rules for a question
+func (r *Repository) SearchRAGContext(ctx context.Context, questionEmbedding []float32, limit int) ([]RAGContext, error) {
+	vec := pgvector.NewVector(questionEmbedding)
+
+	// Search relevant architecture rules via pgvector
+	ruleRows, err := r.db.Pool.Query(ctx, `
+		SELECT 
+			'rule' as source_type,
+			rule_text as content,
+			'' as repo_name,
+			0 as pr_number,
+			'' as severity,
+			'' as file_path,
+			(embedding <=> $1) as score
+		FROM architecture_rules
+		ORDER BY embedding <=> $1
+		LIMIT $2
+	`, vec, limit/2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search rules: %w", err)
+	}
+	defer ruleRows.Close()
+
+	var results []RAGContext
+	for ruleRows.Next() {
+		var c RAGContext
+		if err := ruleRows.Scan(&c.SourceType, &c.Content, &c.RepoName, &c.PRNumber, &c.Severity, &c.FilePath, &c.Score); err != nil {
+			return nil, err
+		}
+		results = append(results, c)
+	}
+
+	// Search relevant findings via text similarity
+	findingRows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			'finding' as source_type,
+			af.description || ' Remediation: ' || af.remediation as content,
+			r.repo_name,
+			pr.pr_number,
+			af.severity,
+			COALESCE(af.file_path, '') as file_path,
+			0.5 as score
+		FROM agent_findings af
+		JOIN pull_requests pr ON pr.id = af.pr_id
+		JOIN repositories r ON r.id = pr.repo_id
+		WHERE af.dismissed = FALSE
+		ORDER BY af.created_at DESC
+		LIMIT $1
+	`, limit/2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search findings: %w", err)
+	}
+	defer findingRows.Close()
+
+	for findingRows.Next() {
+		var c RAGContext
+		if err := findingRows.Scan(&c.SourceType, &c.Content, &c.RepoName, &c.PRNumber, &c.Severity, &c.FilePath, &c.Score); err != nil {
+			return nil, err
+		}
+		results = append(results, c)
+	}
+
+	return results, nil
+}
