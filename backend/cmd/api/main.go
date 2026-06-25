@@ -108,6 +108,7 @@ func main() {
 	mux.HandleFunc("/api/repos", dashboardHandler.HandleRepos)
 	ragHandler := api.NewRAGHandler(repo, geminiClient, groqClient)
 	mux.HandleFunc("/api/chat", ragHandler.HandleRAGQuery)
+	mux.HandleFunc("/api/chat/stream", ragHandler.HandleRAGStream)
 	testHandler := webhook.NewTestTriggerHandler(jobQueue)
 	mux.HandleFunc("/test/trigger", testHandler.HandleTestTrigger)
 

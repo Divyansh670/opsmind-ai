@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -106,4 +107,112 @@ func (c *GroqClient) Complete(ctx context.Context, systemPrompt, userPrompt stri
 	}
 
 	return groqResp.Choices[0].Message.Content, nil
+}
+
+// groqStreamRequest is the request body for streaming calls
+type groqStreamRequest struct {
+	Model       string        `json:"model"`
+	Messages    []groqMessage `json:"messages"`
+	Temperature float64       `json:"temperature"`
+	MaxTokens   int           `json:"max_tokens"`
+	Stream      bool          `json:"stream"`
+}
+
+// groqStreamChunk is a single SSE data chunk from Groq
+type groqStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+		FinishReason *string `json:"finish_reason"`
+	} `json:"choices"`
+}
+
+// CompleteStream sends a prompt to Groq and streams the response token by token.
+// It calls onToken for each token received, and returns when the stream is done.
+func (c *GroqClient) CompleteStream(ctx context.Context, systemPrompt, userPrompt string, onToken func(string)) error {
+	reqBody := groqStreamRequest{
+		Model: c.Model,
+		Messages: []groqMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+		Temperature: 0.3,
+		MaxTokens:   1024,
+		Stream:      true,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal stream request: %w", err)
+	}
+
+	// Use a client without timeout for streaming
+	streamClient := &http.Client{}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, groqAPIURL, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create stream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to start stream: %w", err)
+	}
+	defer resp.Body.Close()
+
+	buf := make([]byte, 4096)
+	var leftover string
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			chunk := leftover + string(buf[:n])
+			lines := strings.Split(chunk, "\n")
+			leftover = ""
+
+			for i, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" || line == "data: [DONE]" {
+					continue
+				}
+				if !strings.HasPrefix(line, "data: ") {
+					if i == len(lines)-1 {
+						leftover = line
+					}
+					continue
+				}
+
+				jsonData := strings.TrimPrefix(line, "data: ")
+				var streamChunk groqStreamChunk
+				if jsonErr := json.Unmarshal([]byte(jsonData), &streamChunk); jsonErr != nil {
+					continue
+				}
+
+				if len(streamChunk.Choices) > 0 {
+					token := streamChunk.Choices[0].Delta.Content
+					if token != "" {
+						onToken(token)
+					}
+					if streamChunk.Choices[0].FinishReason != nil {
+						return nil
+					}
+				}
+			}
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("stream read error: %w", err)
+		}
+	}
 }

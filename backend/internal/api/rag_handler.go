@@ -141,3 +141,102 @@ func (h *RAGHandler) HandleRAGQuery(w http.ResponseWriter, r *http.Request) {
 		Sources: sources,
 	})
 }
+
+// HandleRAGStream handles POST /api/chat/stream — streams the answer via SSE
+func (h *RAGHandler) HandleRAGStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RAGRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Question) == "" {
+		http.Error(w, "question is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Embed question
+	embedding, err := h.geminiClient.Embed(ctx, req.Question)
+	if err != nil {
+		http.Error(w, "failed to embed question", http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve context
+	contexts, err := h.repo.SearchRAGContext(ctx, embedding, 8)
+	if err != nil {
+		http.Error(w, "failed to retrieve context", http.StatusInternalServerError)
+		return
+	}
+
+	// Build context + sources
+	var contextBuilder strings.Builder
+	var sources []RAGSource
+	contextBuilder.WriteString("CONTEXT FROM OPSMIND DATABASE:\n\n")
+	for i, c := range contexts {
+		contextBuilder.WriteString(fmt.Sprintf("[Source %d] Type: %s", i+1, c.SourceType))
+		if c.RepoName != "" {
+			contextBuilder.WriteString(fmt.Sprintf(" | Repo: %s", c.RepoName))
+		}
+		if c.PRNumber > 0 {
+			contextBuilder.WriteString(fmt.Sprintf(" | PR #%d", c.PRNumber))
+		}
+		if c.Severity != "" {
+			contextBuilder.WriteString(fmt.Sprintf(" | Severity: %s", c.Severity))
+		}
+		if c.FilePath != "" {
+			contextBuilder.WriteString(fmt.Sprintf(" | File: %s", c.FilePath))
+		}
+		contextBuilder.WriteString(fmt.Sprintf("\nContent: %s\n\n", c.Content))
+		if c.Content != "" {
+			snippet := c.Content
+			if len(snippet) > 120 {
+				snippet = snippet[:120] + "..."
+			}
+			sources = append(sources, RAGSource{
+				Type:     c.SourceType,
+				RepoName: c.RepoName,
+				PRNumber: c.PRNumber,
+				FilePath: c.FilePath,
+				Severity: c.Severity,
+				Snippet:  snippet,
+			})
+		}
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send sources first as a special event
+	sourcesJSON, _ := json.Marshal(sources)
+	fmt.Fprintf(w, "event: sources\ndata: %s\n\n", string(sourcesJSON))
+	flusher.Flush()
+
+	// Stream the answer token by token
+	userPrompt := fmt.Sprintf("%s\n\nENGINEER QUESTION: %s", contextBuilder.String(), req.Question)
+	err = h.groqClient.CompleteStream(ctx, ragSystemPrompt, userPrompt, func(token string) {
+		tokenJSON, _ := json.Marshal(token)
+		fmt.Fprintf(w, "event: token\ndata: %s\n\n", string(tokenJSON))
+		flusher.Flush()
+	})
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+
+	// Send done event
+	fmt.Fprintf(w, "event: done\ndata: {}\n\n")
+	flusher.Flush()
+}
