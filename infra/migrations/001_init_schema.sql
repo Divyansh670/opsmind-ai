@@ -56,3 +56,6 @@ CREATE TABLE IF NOT EXISTS architecture_rules (
 CREATE INDEX IF NOT EXISTS idx_pr_repo_id ON pull_requests(repo_id);
 CREATE INDEX IF NOT EXISTS idx_findings_pr_id ON agent_findings(pr_id);
 CREATE INDEX IF NOT EXISTS idx_findings_severity ON agent_findings(severity);
+-- Full-text search index for hybrid RAG search
+CREATE INDEX IF NOT EXISTS idx_findings_fts ON agent_findings 
+  USING GIN (to_tsvector('english', description || ' ' || COALESCE(file_path, '') || ' ' || COALESCE(cwe_id, '')));

@@ -412,11 +412,14 @@ type RAGContext struct {
 	Score      float64 `json:"score"`
 }
 
-// SearchRAGContext finds the most relevant findings and rules for a question
-func (r *Repository) SearchRAGContext(ctx context.Context, questionEmbedding []float32, limit int) ([]RAGContext, error) {
+// SearchRAGContext finds relevant findings and rules using hybrid search
+// (pgvector similarity + PostgreSQL full-text search, merged and deduplicated)
+func (r *Repository) SearchRAGContext(ctx context.Context, questionEmbedding []float32, question string, limit int) ([]RAGContext, error) {
 	vec := pgvector.NewVector(questionEmbedding)
+	seen := make(map[string]bool)
+	var results []RAGContext
 
-	// Search relevant architecture rules via pgvector
+	// 1. Vector similarity search on architecture rules
 	ruleRows, err := r.db.Pool.Query(ctx, `
 		SELECT 
 			'rule' as source_type,
@@ -425,27 +428,30 @@ func (r *Repository) SearchRAGContext(ctx context.Context, questionEmbedding []f
 			0 as pr_number,
 			'' as severity,
 			'' as file_path,
-			(embedding <=> $1) as score
+			(1 - (embedding <=> $1)) as score
 		FROM architecture_rules
 		ORDER BY embedding <=> $1
 		LIMIT $2
-	`, vec, limit/2)
+	`, vec, limit/3)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search rules: %w", err)
 	}
 	defer ruleRows.Close()
 
-	var results []RAGContext
 	for ruleRows.Next() {
 		var c RAGContext
 		if err := ruleRows.Scan(&c.SourceType, &c.Content, &c.RepoName, &c.PRNumber, &c.Severity, &c.FilePath, &c.Score); err != nil {
 			return nil, err
 		}
-		results = append(results, c)
+		key := c.SourceType + ":" + c.Content[:min(len(c.Content), 50)]
+		if !seen[key] {
+			seen[key] = true
+			results = append(results, c)
+		}
 	}
 
-	// Search relevant findings via text similarity
-	findingRows, err := r.db.Pool.Query(ctx, `
+	// 2. Full-text search on findings (exact keyword matching)
+	ftsRows, err := r.db.Pool.Query(ctx, `
 		SELECT
 			'finding' as source_type,
 			af.description || ' Remediation: ' || af.remediation as content,
@@ -453,26 +459,77 @@ func (r *Repository) SearchRAGContext(ctx context.Context, questionEmbedding []f
 			pr.pr_number,
 			af.severity,
 			COALESCE(af.file_path, '') as file_path,
-			0.5 as score
+			ts_rank(
+				to_tsvector('english', af.description || ' ' || COALESCE(af.file_path, '') || ' ' || COALESCE(af.cwe_id, '')),
+				plainto_tsquery('english', $1)
+			) as score
+		FROM agent_findings af
+		JOIN pull_requests pr ON pr.id = af.pr_id
+		JOIN repositories r ON r.id = pr.repo_id
+		WHERE 
+			af.dismissed = FALSE
+			AND to_tsvector('english', af.description || ' ' || COALESCE(af.file_path, '') || ' ' || COALESCE(af.cwe_id, ''))
+				@@ plainto_tsquery('english', $1)
+		ORDER BY score DESC
+		LIMIT $2
+	`, question, limit/3)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do full-text search: %w", err)
+	}
+	defer ftsRows.Close()
+
+	for ftsRows.Next() {
+		var c RAGContext
+		if err := ftsRows.Scan(&c.SourceType, &c.Content, &c.RepoName, &c.PRNumber, &c.Severity, &c.FilePath, &c.Score); err != nil {
+			return nil, err
+		}
+		key := fmt.Sprintf("finding:%s:pr%d", c.FilePath, c.PRNumber)
+		if !seen[key] {
+			seen[key] = true
+			results = append(results, c)
+		}
+	}
+
+	// 3. Recent findings fallback (ensures we always have context even with no keyword match)
+	recentRows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			'finding' as source_type,
+			af.description || ' Remediation: ' || af.remediation as content,
+			r.repo_name,
+			pr.pr_number,
+			af.severity,
+			COALESCE(af.file_path, '') as file_path,
+			0.3 as score
 		FROM agent_findings af
 		JOIN pull_requests pr ON pr.id = af.pr_id
 		JOIN repositories r ON r.id = pr.repo_id
 		WHERE af.dismissed = FALSE
 		ORDER BY af.created_at DESC
 		LIMIT $1
-	`, limit/2)
+	`, limit/3)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search findings: %w", err)
+		return nil, fmt.Errorf("failed to fetch recent findings: %w", err)
 	}
-	defer findingRows.Close()
+	defer recentRows.Close()
 
-	for findingRows.Next() {
+	for recentRows.Next() {
 		var c RAGContext
-		if err := findingRows.Scan(&c.SourceType, &c.Content, &c.RepoName, &c.PRNumber, &c.Severity, &c.FilePath, &c.Score); err != nil {
+		if err := recentRows.Scan(&c.SourceType, &c.Content, &c.RepoName, &c.PRNumber, &c.Severity, &c.FilePath, &c.Score); err != nil {
 			return nil, err
 		}
-		results = append(results, c)
+		key := fmt.Sprintf("finding:%s:pr%d", c.FilePath, c.PRNumber)
+		if !seen[key] {
+			seen[key] = true
+			results = append(results, c)
+		}
 	}
 
 	return results, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

@@ -79,7 +79,7 @@ func (h *RAGHandler) HandleRAGQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 2: Retrieve relevant context from pgvector + findings
-	contexts, err := h.repo.SearchRAGContext(ctx, embedding, 8)
+	contexts, err := h.repo.SearchRAGContext(ctx, embedding, req.Question, 8)
 	if err != nil {
 		log.Printf("ERROR: failed to search RAG context: %v", err)
 		http.Error(w, "failed to retrieve context", http.StatusInternalServerError)
@@ -165,7 +165,7 @@ func (h *RAGHandler) HandleRAGStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve context
-	contexts, err := h.repo.SearchRAGContext(ctx, embedding, 8)
+	contexts, err := h.repo.SearchRAGContext(ctx, embedding, req.Question, 8)
 	if err != nil {
 		http.Error(w, "failed to retrieve context", http.StatusInternalServerError)
 		return
