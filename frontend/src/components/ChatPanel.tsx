@@ -41,20 +41,13 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
 
   async function handleSend() {
     if (!input.trim() || loading) return;
-
     const question = input.trim();
     setInput('');
     setLoading(true);
 
     const userMsg: Message = { id: msgId.current++, role: 'user', content: question };
     const assistantId = msgId.current++;
-    const assistantMsg: Message = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      sources: [],
-      streaming: true,
-    };
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', sources: [], streaming: true };
 
     setMessages(prev => [...prev, userMsg, assistantMsg]);
 
@@ -70,11 +63,9 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
       if (!reader) throw new Error('No response body');
 
       let buffer = '';
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -88,36 +79,24 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
             if (eventType === 'sources') {
               try {
                 const sources: RAGSource[] = JSON.parse(data);
-                setMessages(prev =>
-                  prev.map(m => m.id === assistantId ? { ...m, sources } : m)
-                );
+                setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, sources } : m));
               } catch {}
             } else if (eventType === 'token') {
               try {
                 const token: string = JSON.parse(data);
-                setMessages(prev =>
-                  prev.map(m =>
-                    m.id === assistantId ? { ...m, content: m.content + token } : m
-                  )
-                );
+                setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m));
               } catch {}
             } else if (eventType === 'done') {
-              setMessages(prev =>
-                prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m)
-              );
+              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
             }
             eventType = '';
           }
         }
       }
     } catch {
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantId
-            ? { ...m, content: 'Sorry, something went wrong. Please try again.', streaming: false }
-            : m
-        )
-      );
+      setMessages(prev => prev.map(m =>
+        m.id === assistantId ? { ...m, content: 'Sorry, something went wrong. Please try again.', streaming: false } : m
+      ));
     } finally {
       setLoading(false);
     }
@@ -125,162 +104,200 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
 
   if (!isOpen) return null;
 
-  // Panel dimensions based on size
-  const panelStyle = (() => {
+  const getOuterStyle = (): React.CSSProperties => {
     if (size === 'maximized') {
       return {
-        position: 'fixed' as const,
+        position: 'fixed',
         top: 16,
         left: 16,
         right: 16,
         bottom: 16,
-        width: 'auto',
-        height: 'auto',
         zIndex: 1000,
-        filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.6))',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#13151f',
+        border: '1px solid #1f2330',
+        borderRadius: 12,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
       };
     }
     if (size === 'minimized') {
       return {
-        position: 'fixed' as const,
+        position: 'fixed',
         bottom: 24,
         right: 24,
-        width: 280,
-        height: 'auto',
+        width: 300,
         zIndex: 1000,
-      };
-    }
-    return {
-      position: 'fixed' as const,
-      bottom: 24,
-      right: 24,
-      width: 420,
-      height: 580,
-      zIndex: 1000,
-      filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.5))',
-    };
-  })();
-
-  return (
-    <div style={panelStyle}>
-      <div style={{
         display: 'flex',
-        flexDirection: 'column' as const,
-        height: size === 'minimized' ? 'auto' : '100%',
+        flexDirection: 'column',
         backgroundColor: '#13151f',
         border: '1px solid #1f2330',
         borderRadius: 12,
-        overflow: 'hidden',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+      };
+    }
+    return {
+      position: 'fixed',
+      bottom: 24,
+      right: 24,
+      width: 420,
+      height: 560,
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: '#13151f',
+      border: '1px solid #1f2330',
+      borderRadius: 12,
+      boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+    };
+  };
+
+  return (
+    <div style={getOuterStyle()}>
+
+      {/* Header — always visible */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '12px 16px',
+        borderBottom: size !== 'minimized' ? '1px solid #1f2330' : 'none',
+        backgroundColor: '#0f1117',
+        borderRadius: size === 'minimized' ? 12 : '12px 12px 0 0',
+        flexShrink: 0,
       }}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div style={styles.headerLeft}>
-            <Bot size={18} color="#60a5fa" />
-            <span style={styles.headerTitle}>Ask OpsMind AI</span>
-            {size !== 'minimized' && (
-              <span style={styles.headerSubtitle}>RAG-powered • Searches your findings</span>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {/* Minimize button */}
-            <button
-              style={styles.iconBtn}
-              onClick={() => setSize(s => s === 'minimized' ? 'normal' : 'minimized')}
-              title={size === 'minimized' ? 'Expand' : 'Minimize'}
-            >
-              <Minimize2 size={14} />
-            </button>
-            {/* Maximize button — hidden when minimized */}
-            {size !== 'minimized' && (
-              <button
-                style={styles.iconBtn}
-                onClick={() => setSize(s => s === 'maximized' ? 'normal' : 'maximized')}
-                title={size === 'maximized' ? 'Restore' : 'Maximize'}
-              >
-                <Maximize2 size={14} />
-              </button>
-            )}
-            {/* Close button */}
-            <button
-              style={{ ...styles.iconBtn, color: '#f87171' }}
-              onClick={onClose}
-              title="Close"
-            >
-              <X size={14} />
-            </button>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Bot size={18} color="#60a5fa" />
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#e5e7eb' }}>Ask OpsMind AI</span>
+          {size === 'normal' && (
+            <span style={{ fontSize: 10, color: '#4b5563' }}>RAG • pgvector</span>
+          )}
         </div>
-
-        {/* Body — hidden when minimized */}
-        {size !== 'minimized' && (
-          <>
-            {/* Messages */}
-            <div style={styles.messages}>
-              {messages.map(msg => (
-                <div key={msg.id} style={msg.role === 'user' ? styles.userRow : styles.assistantRow}>
-                  <div style={msg.role === 'user' ? styles.userAvatar : styles.assistantAvatar}>
-                    {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
-                  </div>
-                  <div style={{ maxWidth: '80%' }}>
-                    <div style={msg.role === 'user' ? styles.userBubble : styles.assistantBubble}>
-                      <pre style={styles.messageText}>{msg.content}</pre>
-                      {msg.streaming && <span style={styles.cursor}>▋</span>}
-                    </div>
-
-                    {msg.sources && msg.sources.length > 0 && !msg.streaming && (
-                      <div style={styles.sources}>
-                        <p style={styles.sourcesLabel}>Sources used:</p>
-                        {msg.sources.map((s, i) => (
-                          <div key={i} style={styles.sourceChip}>
-                            {getSourceIcon(s.type, s.severity)}
-                            <span style={styles.sourceText}>
-                              {s.type === 'finding'
-                                ? `PR #${s.pr_number} • ${s.repo_name}${s.file_path ? ` • ${s.file_path}` : ''}`
-                                : `Rule: ${s.snippet}`}
-                            </span>
-                            {s.severity && (
-                              <span style={{ ...styles.severityTag, color: getSeverityColor(s.severity) }}>
-                                {s.severity}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-
-            {/* Input */}
-            <div style={styles.inputRow}>
-              <input
-                style={styles.input}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                placeholder="Ask about findings, cost drift, architecture violations..."
-                disabled={loading}
-              />
-              <button
-                style={{
-                  ...styles.sendBtn,
-                  opacity: loading || !input.trim() ? 0.5 : 1,
-                  cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-                }}
-                onClick={handleSend}
-                disabled={loading || !input.trim()}
-              >
-                <Send size={15} />
-              </button>
-            </div>
-          </>
-        )}
+        <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {/* Minimize / Restore */}
+          <button
+            onClick={() => setSize(s => s === 'minimized' ? 'normal' : 'minimized')}
+            title={size === 'minimized' ? 'Restore' : 'Minimize'}
+            style={btnStyle}
+          >
+            <Minimize2 size={14} />
+          </button>
+          {/* Maximize / Restore — only when not minimized */}
+          {size !== 'minimized' && (
+            <button
+              onClick={() => setSize(s => s === 'maximized' ? 'normal' : 'maximized')}
+              title={size === 'maximized' ? 'Restore' : 'Maximize'}
+              style={btnStyle}
+            >
+              <Maximize2 size={14} />
+            </button>
+          )}
+          {/* Close */}
+          <button
+            onClick={onClose}
+            title="Close"
+            style={{ ...btnStyle, color: '#f87171' }}
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
+
+      {/* Body — hidden when minimized */}
+      {size !== 'minimized' && (
+        <>
+          {/* Messages */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}>
+            {messages.map(msg => (
+              <div key={msg.id} style={msg.role === 'user' ? styles.userRow : styles.assistantRow}>
+                <div style={msg.role === 'user' ? styles.userAvatar : styles.assistantAvatar}>
+                  {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+                </div>
+                <div style={{ maxWidth: '80%' }}>
+                  <div style={msg.role === 'user' ? styles.userBubble : styles.assistantBubble}>
+                    <pre style={styles.messageText}>{msg.content}</pre>
+                    {msg.streaming && <span style={{ color: '#60a5fa' }}>▋</span>}
+                  </div>
+                  {msg.sources && msg.sources.length > 0 && !msg.streaming && (
+                    <div style={{ marginTop: 8 }}>
+                      <p style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>Sources used:</p>
+                      {msg.sources.map((s, i) => (
+                        <div key={i} style={styles.sourceChip}>
+                          {getSourceIcon(s.type, s.severity)}
+                          <span style={styles.sourceText}>
+                            {s.type === 'finding'
+                              ? `PR #${s.pr_number} • ${s.repo_name}${s.file_path ? ` • ${s.file_path}` : ''}`
+                              : `Rule: ${s.snippet}`}
+                          </span>
+                          {s.severity && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: getSeverityColor(s.severity) }}>
+                              {s.severity}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Input */}
+          <div style={{
+            display: 'flex',
+            gap: 8,
+            padding: '12px 16px',
+            borderTop: '1px solid #1f2330',
+            backgroundColor: '#0f1117',
+            borderRadius: '0 0 12px 12px',
+            flexShrink: 0,
+          }}>
+            <input
+              style={styles.input}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+              placeholder="Ask about findings, cost drift, architecture violations..."
+              disabled={loading}
+            />
+            <button
+              style={{
+                ...styles.sendBtn,
+                opacity: loading || !input.trim() ? 0.5 : 1,
+                cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+              }}
+              onClick={handleSend}
+              disabled={loading || !input.trim()}
+            >
+              <Send size={15} />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+const btnStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: '#6b7280',
+  cursor: 'pointer',
+  padding: 6,
+  borderRadius: 4,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
 
 function getSourceIcon(type: string, severity: string) {
   if (type === 'rule') return <Building2 size={12} color="#60a5fa" />;
@@ -299,155 +316,38 @@ function getSeverityColor(severity: string) {
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '12px 16px',
-    borderBottom: '1px solid #1f2330',
-    backgroundColor: '#0f1117',
-    cursor: 'default',
-  },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: '#e5e7eb',
-  },
-  headerSubtitle: {
-    fontSize: 10,
-    color: '#4b5563',
-  },
-  iconBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#6b7280',
-    cursor: 'pointer',
-    padding: 4,
-    borderRadius: 4,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  messages: {
-    flex: 1,
-    overflowY: 'auto' as const,
-    padding: 16,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 16,
-  },
-  userRow: {
-    display: 'flex',
-    flexDirection: 'row-reverse' as const,
-    gap: 8,
-    alignItems: 'flex-start',
-  },
-  assistantRow: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'flex-start',
-  },
+  userRow: { display: 'flex', flexDirection: 'row-reverse', gap: 8, alignItems: 'flex-start' },
+  assistantRow: { display: 'flex', gap: 8, alignItems: 'flex-start' },
   userAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: '50%',
-    backgroundColor: '#1d4ed8',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    color: '#fff',
+    width: 28, height: 28, borderRadius: '50%', backgroundColor: '#1d4ed8',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff',
   },
   assistantAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: '50%',
-    backgroundColor: '#1f2330',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    color: '#60a5fa',
+    width: 28, height: 28, borderRadius: '50%', backgroundColor: '#1f2330',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#60a5fa',
   },
-  userBubble: {
-    backgroundColor: '#1d4ed8',
-    borderRadius: '12px 12px 2px 12px',
-    padding: '8px 12px',
-  },
+  userBubble: { backgroundColor: '#1d4ed8', borderRadius: '12px 12px 2px 12px', padding: '8px 12px' },
   assistantBubble: {
-    backgroundColor: '#1a1d29',
-    border: '1px solid #1f2330',
-    borderRadius: '12px 12px 12px 2px',
-    padding: '8px 12px',
+    backgroundColor: '#1a1d29', border: '1px solid #1f2330',
+    borderRadius: '12px 12px 12px 2px', padding: '8px 12px',
   },
   messageText: {
-    fontSize: 13,
-    color: '#e5e7eb',
-    lineHeight: 1.6,
-    whiteSpace: 'pre-wrap' as const,
-    fontFamily: 'inherit',
-    margin: 0,
-  },
-  cursor: {
-    color: '#60a5fa',
-  },
-  sources: {
-    marginTop: 8,
-  },
-  sourcesLabel: {
-    fontSize: 10,
-    color: '#4b5563',
-    marginBottom: 4,
+    fontSize: 13, color: '#e5e7eb', lineHeight: 1.6,
+    whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0,
   },
   sourceChip: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#0f1117',
-    border: '1px solid #1f2330',
-    borderRadius: 6,
-    padding: '4px 8px',
-    marginBottom: 4,
+    display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#0f1117',
+    border: '1px solid #1f2330', borderRadius: 6, padding: '4px 8px', marginBottom: 4,
   },
-  sourceText: {
-    fontSize: 11,
-    color: '#6b7280',
-    flex: 1,
-  },
-  severityTag: {
-    fontSize: 10,
-    fontWeight: 700,
-  },
-  inputRow: {
-    display: 'flex',
-    gap: 8,
-    padding: '12px 16px',
-    borderTop: '1px solid #1f2330',
-    backgroundColor: '#0f1117',
-  },
+  sourceText: { fontSize: 11, color: '#6b7280', flex: 1 },
   input: {
-    flex: 1,
-    backgroundColor: '#1a1d29',
-    border: '1px solid #1f2330',
-    borderRadius: 8,
-    padding: '8px 12px',
-    color: '#e5e7eb',
-    fontSize: 13,
-    outline: 'none',
-    fontFamily: 'inherit',
+    flex: 1, backgroundColor: '#1a1d29', border: '1px solid #1f2330',
+    borderRadius: 8, padding: '8px 12px', color: '#e5e7eb',
+    fontSize: 13, outline: 'none', fontFamily: 'inherit',
   },
   sendBtn: {
-    backgroundColor: '#1d4ed8',
-    border: 'none',
-    borderRadius: 8,
-    color: '#fff',
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#1d4ed8', border: 'none', borderRadius: 8,
+    color: '#fff', padding: '8px 12px', display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
   },
 };
