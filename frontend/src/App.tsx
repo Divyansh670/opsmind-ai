@@ -7,6 +7,8 @@ import RulesManager from './components/RulesManager';
 import { useAuditStream } from './hooks/useAuditStream';
 import TrendCharts from './components/TrendCharts';
 import RepositoriesPage from './components/RepositoriesPage';
+import ChatPanel from './components/ChatPanel';
+import { MessageSquare } from 'lucide-react';
 import type { PullRequest } from './types/api';
 
 type Page = 'dashboard' | 'repositories' | 'settings';
@@ -15,6 +17,7 @@ function App() {
   const { metrics, pullRequests, loading, lastUpdated, refresh } = useAuditStream();
   const [selectedPR, setSelectedPR] = useState<PullRequest | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
+  const [chatOpen, setChatOpen] = useState(false);
 
   function handleFindingDismissed() {
     refresh();
@@ -66,6 +69,32 @@ function App() {
           </>
         )}
       </div>
+      {/* Floating chat button */}
+      <button
+        style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          width: 52,
+          height: 52,
+          borderRadius: '50%',
+          backgroundColor: '#1d4ed8',
+          border: 'none',
+          color: '#fff',
+          cursor: 'pointer',
+          display: chatOpen ? 'none' : 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 24px rgba(29,78,216,0.4)',
+          zIndex: 999,
+        }}
+        onClick={() => setChatOpen(true)}
+        title="Ask OpsMind AI"
+      >
+        <MessageSquare size={22} />
+      </button>
+
+      <ChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </Layout>
   );
 }
