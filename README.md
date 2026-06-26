@@ -40,24 +40,26 @@ Within seconds of a PR being opened, the engineer gets a detailed Markdown comme
 
 Most code review tools are either static analysis (rule-based, brittle, high false-positive rate) or expensive SaaS products (Snyk, Datadog, Veracode) that cost thousands per month.
 
-OpsMind AI is different in three ways:
+OpsMind AI is different in four ways:
 
 **1. Three concurrent AI agents, not one.** Security, cost, and architecture are completely separate concerns requiring different mental models. Running them in parallel via goroutines means each agent gets full context and reasons independently — no compromise between competing priorities.
 
 **2. Self-improving via MLOps feedback.** When an engineer dismisses a finding as a false positive or approves an exception, that decision is logged to a feedback table. Every override teaches the system what matters to your team specifically. The architecture rules system takes this further — engineers define rules in plain English, they get embedded into pgvector, and future PRs are checked against them via semantic similarity search, not keyword matching.
 
-**3. Built entirely free.** The entire stack (Go backend, PostgreSQL + pgvector, React dashboard, GitHub Actions CI, cloud deployment on Render) costs $0/month. This makes it accessible to individual engineers, small teams, and open source projects that can't afford enterprise security tooling.
+**3. Interactive RAG chatbot.** Instead of reading static reports, engineers can ask natural language questions — "what security issues exist in admin.go?" or "show me CWE-798 findings" — and get streamed, grounded answers with clickable source citations backed by hybrid search (pgvector + PostgreSQL full-text).
+
+**4. Built entirely free.** The entire stack (Go backend, PostgreSQL + pgvector, React dashboard, GitHub Actions CI, cloud deployment on Render) costs $0/month. This makes it accessible to individual engineers, small teams, and open source projects that can't afford enterprise security tooling.
 
 ---
 
 ## How People Can Use It
 
 ### Option 1 — Use the live demo
-Visit https://opsmind-frontend.onrender.com to see the dashboard with real PR findings. Hit the `/test/trigger` endpoint on the backend to fire a synthetic vulnerable PR through the full pipeline and watch the agents analyze it in real time.
+Visit https://opsmind-frontend.onrender.com to see the dashboard with real PR findings. Click the blue chat button (💬) in the bottom right to ask the RAG chatbot anything about the findings.
 
 ### Option 2 — Connect it to your own GitHub repo (free)
 1. Fork or clone this repo
-2. Create a free account on [Render](https://render.com) and [Groq](https://console.groq.com)
+2. Create a free account on [Render](https://render.com), [Groq](https://console.groq.com), and [Google AI Studio](https://aistudio.google.com/apikey)
 3. Deploy the backend and frontend following the setup instructions below
 4. Add a GitHub webhook pointing at your Render backend URL
 5. Every PR you open will now get automatically analyzed and commented on
@@ -79,6 +81,7 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 - 🏗️ **Architecture Supervisor** — Validates code against best practices + your custom pgvector-embedded rules
 - 💬 **Automated PR Comments** — Posts detailed Markdown findings directly to GitHub pull requests
 - 📊 **Engineering Dashboard** — Live React UI with metrics, trend charts, PR audits, and per-finding detail
+- 🤖 **RAG Chatbot** — Hybrid search (pgvector + full-text) with SSE streaming and source citations
 - 🔁 **MLOps Feedback Loop** — Engineers dismiss false positives or approve exceptions, logged for retraining
 - 🐳 **Fully Containerized** — Entire stack runs via a single `docker compose up`
 - ☁️ **Live in Production** — Deployed free on Render with auto-deploy on every push
@@ -90,8 +93,8 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 | Layer | Technology |
 |-------|-----------|
 | Backend | Go (Golang) — concurrent, compiled, zero-dependency binary |
-| Database | PostgreSQL 16 + pgvector — semantic similarity search for architecture rules |
-| AI/LLM | Groq API — Llama 3.3 70B for agent inference, Gemini embedding-001 for vector embeddings |
+| Database | PostgreSQL 16 + pgvector — semantic + full-text hybrid search |
+| AI/LLM | Groq API — Llama 3.3 70B for agents + RAG; Gemini embedding-001 for vectors |
 | Frontend | React + TypeScript (Vite), served via Nginx in production |
 | Infra | Docker, Docker Compose, Render (hosting), GitHub Actions (CI), ngrok (dev) |
 
@@ -126,6 +129,9 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 ✅ Auto-refresh polling — dashboard updates every 30s with manual refresh option  
 ✅ Gemini embedding-001 integration for architecture rule vector embeddings  
 ✅ pgvector semantic similarity search wired into Architecture Supervisor agent  
+✅ RAG chatbot — hybrid pgvector + PostgreSQL full-text search over findings and rules  
+✅ RAG chatbot — SSE streaming with word-by-word answer delivery and source citations  
+✅ RAG chatbot — minimize/maximize/close UI with floating chat button  
 ✅ Multi-stage Dockerfiles for backend (Go/Alpine) and frontend (Node build → Nginx)  
 ✅ Full stack containerized via Docker Compose (Postgres + backend + frontend)  
 ✅ GitHub Actions CI pipeline — backend build + go vet + tests, frontend build, Docker validation  
@@ -156,9 +162,10 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
                     ▼                                       ▼
           GitHub PR Comment (Markdown)          React Dashboard (REST API)
                                                               ↓
-                                        Engineer dismisses/approves findings
-                                                              ↓
-                                              feedback_logs (MLOps loop)
+                                        ┌─────────────────────────────────┐
+                                        ▼                                 ▼
+                             Engineer dismisses/approves          RAG Chatbot
+                               findings (MLOps loop)        (hybrid search + SSE stream)
 ```
 
 ---
@@ -169,8 +176,6 @@ The production stack runs on Render's free tier:
 - **PostgreSQL** — managed database with pgvector extension enabled
 - **Backend** — Dockerized Go service, auto-deploys from `main` on every push
 - **Frontend** — static site built from `frontend/`, auto-deploys from `main` on every push
-
-Environment variables are configured in the Render dashboard. The backend reads Render's dynamically assigned `PORT` variable automatically, falling back to `SERVER_PORT`/`8080` for local and Docker environments.
 
 ---
 
@@ -274,6 +279,8 @@ GEMINI_API_KEY=your_gemini_key_here
 | `/api/rules/{id}` | DELETE | Delete an architecture rule |
 | `/api/trend` | GET | PR trend data for dashboard charts |
 | `/api/repos` | GET | Repository stats with aggregated PR metrics |
+| `/api/chat` | POST | RAG query — returns answer + sources as JSON |
+| `/api/chat/stream` | POST | RAG query — streams answer token-by-token via SSE |
 
 ---
 
@@ -301,12 +308,13 @@ opsmind-ai/
 │   ├── internal/
 │   │   ├── api/
 │   │   │   ├── dashboard_handler.go      # All REST API endpoints
+│   │   │   ├── rag_handler.go            # RAG chatbot endpoints (JSON + SSE)
 │   │   │   └── cors.go                   # Multi-origin CORS middleware
 │   │   ├── config/
 │   │   │   └── config.go                 # Environment config (supports Render's PORT)
 │   │   ├── db/
 │   │   │   ├── postgres.go               # PostgreSQL connection pool (env-driven DSN)
-│   │   │   └── repository.go             # All DB read/write + pgvector operations
+│   │   │   └── repository.go             # All DB read/write + pgvector + FTS operations
 │   │   ├── models/
 │   │   │   └── structures.go             # All entity structs and constants
 │   │   ├── webhook/
@@ -315,7 +323,7 @@ opsmind-ai/
 │   │   │   └── test_trigger.go           # Rate-limited synthetic PR endpoint
 │   │   └── agents/
 │   │       ├── engine.go                 # Concurrent worker pool / orchestrator
-│   │       ├── groq_client.go            # Groq LLM API client
+│   │       ├── groq_client.go            # Groq LLM API client (complete + stream)
 │   │       ├── groq_client_test.go       # JSON parsing unit tests
 │   │       ├── gemini_client.go          # Gemini embeddings API client
 │   │       ├── github_client.go          # GitHub API (diff fetch + PR comments)
@@ -338,7 +346,8 @@ opsmind-ai/
 │   │   │   ├── FindingDetails.tsx        # Per-PR findings with dismiss actions
 │   │   │   ├── TrendCharts.tsx           # Security score + cost drift over time
 │   │   │   ├── RepositoriesPage.tsx      # Per-repo stats and risk badges
-│   │   │   └── RulesManager.tsx          # Custom architecture rules CRUD UI
+│   │   │   ├── RulesManager.tsx          # Custom architecture rules CRUD UI
+│   │   │   └── ChatPanel.tsx             # RAG chatbot with SSE streaming + resize
 │   │   ├── hooks/
 │   │   │   └── useAuditStream.ts         # Auto-refresh polling hook (30s interval)
 │   │   ├── types/
@@ -351,13 +360,13 @@ opsmind-ai/
 │   ├── docker-compose.yml                # Full stack: Postgres + backend + frontend
 │   ├── .env.docker                       # Docker stack secrets (gitignored)
 │   └── migrations/
-│       └── 001_init_schema.sql           # Full database schema with pgvector
+│       └── 001_init_schema.sql           # Full database schema with pgvector + FTS index
 └── docs/
 ```
 
 ---
 
 ## Status
-🟢 **Complete and live in production.** The full OpsMind AI system — autonomous AI agents, live dashboard, MLOps feedback loop, pgvector semantic search, trend charts, repositories page, custom rules management, full containerization, CI pipeline with tests, and free-tier cloud deployment — is complete and verified end-to-end on a real GitHub repository.
+🟢 **Complete and live in production.** The full OpsMind AI system — autonomous AI agents, live dashboard, RAG chatbot with hybrid search and SSE streaming, MLOps feedback loop, pgvector semantic search, trend charts, repositories page, custom rules management, full containerization, CI pipeline with tests, and free-tier cloud deployment — is complete and verified end-to-end on a real GitHub repository.
 
 Built entirely free. No AWS. No paid APIs beyond free tiers. No credit card required anywhere.
