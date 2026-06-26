@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, X, AlertTriangle, Building2, DollarSign } from 'lucide-react';
+import { Send, Bot, User, X, AlertTriangle, Building2, DollarSign, Maximize2, Minimize2 } from 'lucide-react';
 import type { RAGSource } from '../api/client';
 
 interface Message {
@@ -17,6 +17,8 @@ interface ChatPanelProps {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
+type ChatSize = 'normal' | 'minimized' | 'maximized';
+
 export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -27,12 +29,15 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [size, setSize] = useState<ChatSize>('normal');
   const bottomRef = useRef<HTMLDivElement>(null);
   const msgId = useRef(1);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (size !== 'minimized') {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, size]);
 
   async function handleSend() {
     if (!input.trim() || loading) return;
@@ -105,7 +110,7 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
           }
         }
       }
-    } catch (err) {
+    } catch {
       setMessages(prev =>
         prev.map(m =>
           m.id === assistantId
@@ -120,83 +125,158 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
 
   if (!isOpen) return null;
 
+  // Panel dimensions based on size
+  const panelStyle = (() => {
+    if (size === 'maximized') {
+      return {
+        position: 'fixed' as const,
+        top: 16,
+        left: 16,
+        right: 16,
+        bottom: 16,
+        width: 'auto',
+        height: 'auto',
+        zIndex: 1000,
+        filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.6))',
+      };
+    }
+    if (size === 'minimized') {
+      return {
+        position: 'fixed' as const,
+        bottom: 24,
+        right: 24,
+        width: 280,
+        height: 'auto',
+        zIndex: 1000,
+      };
+    }
+    return {
+      position: 'fixed' as const,
+      bottom: 24,
+      right: 24,
+      width: 420,
+      height: 580,
+      zIndex: 1000,
+      filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.5))',
+    };
+  })();
+
   return (
-    <div style={styles.overlay}>
-      <div style={styles.panel}>
+    <div style={panelStyle}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column' as const,
+        height: size === 'minimized' ? 'auto' : '100%',
+        backgroundColor: '#13151f',
+        border: '1px solid #1f2330',
+        borderRadius: 12,
+        overflow: 'hidden',
+      }}>
         {/* Header */}
         <div style={styles.header}>
           <div style={styles.headerLeft}>
             <Bot size={18} color="#60a5fa" />
             <span style={styles.headerTitle}>Ask OpsMind AI</span>
-            <span style={styles.headerSubtitle}>RAG-powered • Searches your findings</span>
+            {size !== 'minimized' && (
+              <span style={styles.headerSubtitle}>RAG-powered • Searches your findings</span>
+            )}
           </div>
-          <button style={styles.closeBtn} onClick={onClose}>
-            <X size={16} />
-          </button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {/* Minimize button */}
+            <button
+              style={styles.iconBtn}
+              onClick={() => setSize(s => s === 'minimized' ? 'normal' : 'minimized')}
+              title={size === 'minimized' ? 'Expand' : 'Minimize'}
+            >
+              <Minimize2 size={14} />
+            </button>
+            {/* Maximize button — hidden when minimized */}
+            {size !== 'minimized' && (
+              <button
+                style={styles.iconBtn}
+                onClick={() => setSize(s => s === 'maximized' ? 'normal' : 'maximized')}
+                title={size === 'maximized' ? 'Restore' : 'Maximize'}
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
+            {/* Close button */}
+            <button
+              style={{ ...styles.iconBtn, color: '#f87171' }}
+              onClick={onClose}
+              title="Close"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
-        {/* Messages */}
-        <div style={styles.messages}>
-          {messages.map(msg => (
-            <div key={msg.id} style={msg.role === 'user' ? styles.userRow : styles.assistantRow}>
-              <div style={msg.role === 'user' ? styles.userAvatar : styles.assistantAvatar}>
-                {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
-              </div>
-              <div style={{ maxWidth: '80%' }}>
-                <div style={msg.role === 'user' ? styles.userBubble : styles.assistantBubble}>
-                  <pre style={styles.messageText}>{msg.content}</pre>
-                  {msg.streaming && <span style={styles.cursor}>▋</span>}
-                </div>
-
-                {/* Source citations */}
-                {msg.sources && msg.sources.length > 0 && !msg.streaming && (
-                  <div style={styles.sources}>
-                    <p style={styles.sourcesLabel}>Sources used:</p>
-                    {msg.sources.map((s, i) => (
-                      <div key={i} style={styles.sourceChip}>
-                        {getSourceIcon(s.type, s.severity)}
-                        <span style={styles.sourceText}>
-                          {s.type === 'finding'
-                            ? `PR #${s.pr_number} • ${s.repo_name}${s.file_path ? ` • ${s.file_path}` : ''}`
-                            : `Rule: ${s.snippet}`}
-                        </span>
-                        {s.severity && (
-                          <span style={{ ...styles.severityTag, color: getSeverityColor(s.severity) }}>
-                            {s.severity}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+        {/* Body — hidden when minimized */}
+        {size !== 'minimized' && (
+          <>
+            {/* Messages */}
+            <div style={styles.messages}>
+              {messages.map(msg => (
+                <div key={msg.id} style={msg.role === 'user' ? styles.userRow : styles.assistantRow}>
+                  <div style={msg.role === 'user' ? styles.userAvatar : styles.assistantAvatar}>
+                    {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                   </div>
-                )}
-              </div>
-            </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
+                  <div style={{ maxWidth: '80%' }}>
+                    <div style={msg.role === 'user' ? styles.userBubble : styles.assistantBubble}>
+                      <pre style={styles.messageText}>{msg.content}</pre>
+                      {msg.streaming && <span style={styles.cursor}>▋</span>}
+                    </div>
 
-        {/* Input */}
-        <div style={styles.inputRow}>
-          <input
-            style={styles.input}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder="Ask about findings, cost drift, architecture violations..."
-            disabled={loading}
-          />
-          <button
-            style={{
-              ...styles.sendBtn,
-              opacity: loading || !input.trim() ? 0.5 : 1,
-              cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-            }}
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-          >
-            <Send size={15} />
-          </button>
-        </div>
+                    {msg.sources && msg.sources.length > 0 && !msg.streaming && (
+                      <div style={styles.sources}>
+                        <p style={styles.sourcesLabel}>Sources used:</p>
+                        {msg.sources.map((s, i) => (
+                          <div key={i} style={styles.sourceChip}>
+                            {getSourceIcon(s.type, s.severity)}
+                            <span style={styles.sourceText}>
+                              {s.type === 'finding'
+                                ? `PR #${s.pr_number} • ${s.repo_name}${s.file_path ? ` • ${s.file_path}` : ''}`
+                                : `Rule: ${s.snippet}`}
+                            </span>
+                            {s.severity && (
+                              <span style={{ ...styles.severityTag, color: getSeverityColor(s.severity) }}>
+                                {s.severity}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Input */}
+            <div style={styles.inputRow}>
+              <input
+                style={styles.input}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                placeholder="Ask about findings, cost drift, architecture violations..."
+                disabled={loading}
+              />
+              <button
+                style={{
+                  ...styles.sendBtn,
+                  opacity: loading || !input.trim() ? 0.5 : 1,
+                  cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+                }}
+                onClick={handleSend}
+                disabled={loading || !input.trim()}
+              >
+                <Send size={15} />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -219,26 +299,6 @@ function getSeverityColor(severity: string) {
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-  overlay: {
-    position: 'fixed',
-    bottom: 24,
-    right: 24,
-    zIndex: 1000,
-    width: 420,
-    height: 580,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.5))',
-  },
-  panel: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    height: '100%',
-    backgroundColor: '#13151f',
-    border: '1px solid #1f2330',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
   header: {
     display: 'flex',
     alignItems: 'center',
@@ -246,6 +306,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '12px 16px',
     borderBottom: '1px solid #1f2330',
     backgroundColor: '#0f1117',
+    cursor: 'default',
   },
   headerLeft: {
     display: 'flex',
@@ -261,12 +322,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 10,
     color: '#4b5563',
   },
-  closeBtn: {
+  iconBtn: {
     background: 'none',
     border: 'none',
     color: '#6b7280',
     cursor: 'pointer',
     padding: 4,
+    borderRadius: 4,
+    display: 'flex',
+    alignItems: 'center',
   },
   messages: {
     flex: 1,
@@ -330,7 +394,6 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   cursor: {
     color: '#60a5fa',
-    animation: 'blink 1s infinite',
   },
   sources: {
     marginTop: 8,
