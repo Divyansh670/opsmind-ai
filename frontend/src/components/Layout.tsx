@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { LayoutDashboard, GitBranch, Settings, Bot } from 'lucide-react';
+import { LayoutDashboard, GitBranch, Settings, Bot, HelpCircle } from 'lucide-react';
 
-type Page = 'dashboard' | 'repositories' | 'settings';
+type Page = 'dashboard' | 'repositories' | 'settings' | 'howto';
 
 interface LayoutProps {
   children: ReactNode;
@@ -34,6 +34,14 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
           >
             <GitBranch size={16} />
             Repositories
+          </button>
+          <button
+            style={currentPage === 'howto' ? styles.navItemActive : styles.navItem}
+            onClick={() => onNavigate('howto')}
+            className="nav-btn"
+          >
+            <HelpCircle size={16} />
+            How to Use
           </button>
           <button
           className="nav-btn"

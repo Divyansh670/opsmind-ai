@@ -9,9 +9,10 @@ import TrendCharts from './components/TrendCharts';
 import RepositoriesPage from './components/RepositoriesPage';
 import ChatPanel from './components/ChatPanel';
 import { MessageSquare } from 'lucide-react';
+import HowToUsePage from './components/HowToUsePage';
 import type { PullRequest } from './types/api';
 
-type Page = 'dashboard' | 'repositories' | 'settings';
+type Page = 'dashboard' | 'repositories' | 'settings' | 'howto';
 
 function App() {
   const { metrics, pullRequests, loading, lastUpdated, refresh } = useAuditStream();
@@ -59,7 +60,7 @@ function App() {
         )}
 
         {page === 'repositories' && <RepositoriesPage />}
-
+{page === 'howto' && <HowToUsePage />}
         {page === 'settings' && (
           <>
             <div style={styles.pageHeader}>
