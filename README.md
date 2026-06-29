@@ -132,6 +132,7 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 ✅ RAG chatbot — hybrid pgvector + PostgreSQL full-text search over findings and rules  
 ✅ RAG chatbot — SSE streaming with word-by-word answer delivery and source citations  
 ✅ RAG chatbot — minimize/maximize/close UI with floating chat button  
+✅ How to Use page — quick start guide, feature walkthroughs, use cases, self-hosting, and API reference
 ✅ Multi-stage Dockerfiles for backend (Go/Alpine) and frontend (Node build → Nginx)  
 ✅ Full stack containerized via Docker Compose (Postgres + backend + frontend)  
 ✅ GitHub Actions CI pipeline — backend build + go vet + tests, frontend build, Docker validation  
@@ -347,7 +348,8 @@ opsmind-ai/
 │   │   │   ├── TrendCharts.tsx           # Security score + cost drift over time
 │   │   │   ├── RepositoriesPage.tsx      # Per-repo stats and risk badges
 │   │   │   ├── RulesManager.tsx          # Custom architecture rules CRUD UI
-│   │   │   └── ChatPanel.tsx             # RAG chatbot with SSE streaming + resize
+│   │   │   ├── ChatPanel.tsx             # RAG chatbot with SSE streaming + resize
+│   │   │   └── HowToUsePage.tsx          # Interactive guide — quick start, use cases, API reference
 │   │   ├── hooks/
 │   │   │   └── useAuditStream.ts         # Auto-refresh polling hook (30s interval)
 │   │   ├── types/
