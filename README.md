@@ -48,7 +48,7 @@ OpsMind AI is different in four ways:
 
 **3. Interactive RAG chatbot.** Instead of reading static reports, engineers can ask natural language questions — "what security issues exist in admin.go?" or "show me CWE-798 findings" — and get streamed, grounded answers with clickable source citations backed by hybrid search (pgvector + PostgreSQL full-text).
 
-**4. Built entirely free.** The entire stack (Go backend, PostgreSQL + pgvector, React dashboard, GitHub Actions CI, cloud deployment on Render) costs $0/month. This makes it accessible to individual engineers, small teams, and open source projects that can't afford enterprise security tooling.
+**4. Built entirely free.** The entire stack (Go backend, PostgreSQL + pgvector, React dashboard, GitHub Actions CI, cloud deployment on Render + Neon) costs $0/month, with no expiring resources. This makes it accessible to individual engineers, small teams, and open source projects that can't afford enterprise security tooling.
 
 ---
 
@@ -59,7 +59,7 @@ Visit https://opsmind-frontend.onrender.com to see the dashboard with real PR fi
 
 ### Option 2 — Connect it to your own GitHub repo (free)
 1. Fork or clone this repo
-2. Create a free account on [Render](https://render.com), [Groq](https://console.groq.com), and [Google AI Studio](https://aistudio.google.com/apikey)
+2. Create a free account on [Render](https://render.com), [Neon](https://neon.tech), [Groq](https://console.groq.com), and [Google AI Studio](https://aistudio.google.com/apikey)
 3. Deploy the backend and frontend following the setup instructions below
 4. Add a GitHub webhook pointing at your Render backend URL
 5. Every PR you open will now get automatically analyzed and commented on
@@ -84,7 +84,7 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 - 🤖 **RAG Chatbot** — Hybrid search (pgvector + full-text) with SSE streaming and source citations
 - 🔁 **MLOps Feedback Loop** — Engineers dismiss false positives or approve exceptions, logged for retraining
 - 🐳 **Fully Containerized** — Entire stack runs via a single `docker compose up`
-- ☁️ **Live in Production** — Deployed free on Render with auto-deploy on every push
+- ☁️ **Live in Production** — Deployed free on Render + Neon with auto-deploy on every push
 - ⚙️ **CI Pipeline** — GitHub Actions validates backend, frontend, and Docker builds on every commit
 
 ---
@@ -93,10 +93,10 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 | Layer | Technology |
 |-------|-----------|
 | Backend | Go (Golang) — concurrent, compiled, zero-dependency binary |
-| Database | PostgreSQL 16 + pgvector — semantic + full-text hybrid search |
+| Database | PostgreSQL + pgvector, hosted on [Neon](https://neon.tech) (permanent free tier) — semantic + full-text hybrid search |
 | AI/LLM | Groq API — Llama 3.3 70B for agents + RAG; Gemini embedding-001 for vectors |
 | Frontend | React + TypeScript (Vite), served via Nginx in production |
-| Infra | Docker, Docker Compose, Render (hosting), GitHub Actions (CI), ngrok (dev) |
+| Infra | Docker, Docker Compose, Render (app hosting), Neon (database), GitHub Actions (CI), ngrok (dev) |
 
 ---
 
@@ -132,12 +132,13 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 ✅ RAG chatbot — hybrid pgvector + PostgreSQL full-text search over findings and rules  
 ✅ RAG chatbot — SSE streaming with word-by-word answer delivery and source citations  
 ✅ RAG chatbot — minimize/maximize/close UI with floating chat button  
-✅ How to Use page — quick start guide, feature walkthroughs, use cases, self-hosting, and API reference
+✅ How to Use page — quick start guide, feature walkthroughs, use cases, self-hosting, and API reference  
 ✅ Multi-stage Dockerfiles for backend (Go/Alpine) and frontend (Node build → Nginx)  
 ✅ Full stack containerized via Docker Compose (Postgres + backend + frontend)  
 ✅ GitHub Actions CI pipeline — backend build + go vet + tests, frontend build, Docker validation  
 ✅ Go test suite — 10 tests covering HMAC validation, comment formatting, and JSON parsing  
-✅ **Deployed live on Render** — managed PostgreSQL, Dockerized Go backend, static React frontend  
+✅ **Deployed live on Render + Neon** — permanent free-tier PostgreSQL, Dockerized Go backend, static React frontend  
+✅ **Migrated database from Render's expiring free Postgres to Neon's permanent free tier** for long-term stability  
 ✅ **Verified end-to-end on a real GitHub repository — local dev, fully Dockerized, and live in production**  
 
 ---
@@ -157,7 +158,7 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
                         │               │               │
                         └───────────────┴───────────────┘
                                         ↓
-                              PostgreSQL (findings, PR status)
+                          PostgreSQL on Neon (findings, PR status)
                                         ↓
                     ┌───────────────────┴───────────────────┐
                     ▼                                       ▼
@@ -171,12 +172,14 @@ GitHub PR → Webhook (HMAC verified) → Go Backend → Job Queue
 
 ---
 
-## Deployment (Render)
+## Deployment (Render + Neon)
 
-The production stack runs on Render's free tier:
-- **PostgreSQL** — managed database with pgvector extension enabled
-- **Backend** — Dockerized Go service, auto-deploys from `main` on every push
-- **Frontend** — static site built from `frontend/`, auto-deploys from `main` on every push
+The production stack runs on free tiers across two providers:
+- **PostgreSQL** — managed on [Neon](https://neon.tech) (permanent free tier, pgvector enabled) for long-term stability without expiring resources
+- **Backend** — Dockerized Go service on Render, auto-deploys from `main` on every push
+- **Frontend** — static site on Render built from `frontend/`, auto-deploys from `main` on every push
+
+Environment variables are configured in the Render dashboard. The backend reads Render's dynamically assigned `PORT` variable automatically, falling back to `SERVER_PORT`/`8080` for local and Docker environments.
 
 ---
 
@@ -262,6 +265,8 @@ GITHUB_TOKEN=your_github_pat_here
 GROQ_API_KEY=your_groq_key_here
 GEMINI_API_KEY=your_gemini_key_here
 ```
+
+For production on Render + Neon, point `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` at your Neon connection string and set `DB_SSL_MODE=require`.
 
 ---
 
@@ -369,6 +374,6 @@ opsmind-ai/
 ---
 
 ## Status
-🟢 **Complete and live in production.** The full OpsMind AI system — autonomous AI agents, live dashboard, RAG chatbot with hybrid search and SSE streaming, MLOps feedback loop, pgvector semantic search, trend charts, repositories page, custom rules management, full containerization, CI pipeline with tests, and free-tier cloud deployment — is complete and verified end-to-end on a real GitHub repository.
+🟢 **Complete and live in production.** The full OpsMind AI system — autonomous AI agents, live dashboard, RAG chatbot with hybrid search and SSE streaming, MLOps feedback loop, pgvector semantic search, trend charts, repositories page, custom rules management, full containerization, CI pipeline with tests, and permanent free-tier cloud deployment on Render + Neon — is complete and verified end-to-end on a real GitHub repository.
 
 Built entirely free. No AWS. No paid APIs beyond free tiers. No credit card required anywhere.
