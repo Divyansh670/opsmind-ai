@@ -94,7 +94,7 @@ The full stack (Postgres, backend, React dashboard) comes up in one command.
 |-------|-----------|
 | Backend | Go (Golang) — concurrent, compiled, zero-dependency binary |
 | Database | PostgreSQL + pgvector, hosted on [Neon](https://neon.tech) (permanent free tier) — semantic + full-text hybrid search |
-| AI/LLM | Groq API — Llama 3.3 70B for agents + RAG; Gemini embedding-001 for vectors |
+| AI/LLM | Groq API — Llama 4 Scout 17B for agents + RAG; Gemini embedding-001 for vectors |
 | Frontend | React + TypeScript (Vite), served via Nginx in production |
 | Infra | Docker, Docker Compose, Render (app hosting), Neon (database), GitHub Actions (CI), ngrok (dev) |
 
