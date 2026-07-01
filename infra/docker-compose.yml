@@ -38,7 +38,7 @@ services:
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       GROQ_API_KEY: ${GROQ_API_KEY}
-      GROQ_MODEL_ID: llama-3.3-70b-versatile
+      GROQ_MODEL_ID: qwen/qwen3.6-27b
       MAX_WORKERS: "5"
     ports:
       - "8080:8080"
